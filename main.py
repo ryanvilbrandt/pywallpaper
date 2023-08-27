@@ -5,6 +5,7 @@ import random
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox
@@ -49,7 +50,7 @@ class PyWallpaper:
         # Create a system tray icon
         self.image = Image.open(ICON_PATH)
         self.menu = (
-            pystray.MenuItem("Advance Image", self.trigger_image_loop, default=True),
+            pystray.MenuItem("Advance Image", self.advance_image, default=True),
             pystray.MenuItem("Open Image File", self.open_image_file),
             pystray.MenuItem("Copy Image to Clipboard", self.copy_image_to_clipboard),
             pystray.MenuItem("Go to Image File in Explorer", self.go_to_image_file),
@@ -79,12 +80,12 @@ class PyWallpaper:
         self.root.mainloop()
 
     def read_file_list(self):
-        # self.file_list = [r"\\Omega\Ryans Stuff\Pjorn\Tumblr backup\media\151821973814_0.gif"]
-        # return
         if not os.path.isfile(FILE_LIST_PATH):
             self.file_list = []
         with open(FILE_LIST_PATH) as f:
-            self.file_list = re.split(r"\r?\n", f.read())
+            file_list = re.split(r"\r?\n", f.read())
+            # Remove empty lines
+            self.file_list = [path for path in file_list if path]
 
     def write_file_list(self):
         with open(FILE_LIST_PATH, "w") as f:
@@ -95,10 +96,15 @@ class PyWallpaper:
             self.root.after_cancel(self.timer_id)
         self.original_file_path = random.choice(self.file_list)
         print(self.original_file_path)
-        file_path = self.make_image(self.original_file_path)
-        success = self.set_desktop_wallpaper(file_path)
-        # print(success)
-        self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
+        try:
+            file_path = self.make_image(self.original_file_path)
+        except FileNotFoundError:
+            print(f"Couldn't open image path {self.original_file_path!r}", file=sys.stderr)
+            self.timer_id = self.root.after(ERROR_DELAY, self.trigger_image_loop)
+        else:
+            success = self.set_desktop_wallpaper(file_path)
+            # print(success)
+            self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
 
     def make_image(self, file_path: str) -> str:
         # Open image
@@ -170,6 +176,9 @@ class PyWallpaper:
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
 
     # GUI Functions
+    def advance_image(self, icon, item):
+        self.trigger_image_loop()
+
     def open_image_file(self, icon, item):
         subprocess.run(["cmd", "/c", "start", "", self.original_file_path])
 
@@ -195,6 +204,10 @@ class PyWallpaper:
     def go_to_image_file(self, icon, item):
         subprocess.Popen(["explorer", "/select,", self.original_file_path])
 
+    def remove_image_from_file_list(self, icon, item):
+        self.remove_image_from_file_list_inner(self.original_file_path)
+        self.advance_image(icon, item)
+
     def delete_image(self, icon, item):
         path = self.original_file_path
         result = messagebox.askokcancel("Delete image?", f"Are you sure you want to delete {path}")
@@ -205,9 +218,7 @@ class PyWallpaper:
             self.remove_image_from_file_list_inner(path)
             print(f"Moving {path} to {backup_path}")
             self.icon.notify("Deleted wallpaper", f"{path} has been deleted.")
-
-    def remove_image_from_file_list(self, icon, item):
-        self.remove_image_from_file_list_inner(self.original_file_path)
+            self.advance_image(icon, item)
 
     def remove_image_from_file_list_inner(self, path: str):
         self.file_list.remove(path)
