@@ -9,6 +9,7 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, filedialog
+from typing import Optional, Tuple
 
 import pystray
 import win32api
@@ -17,23 +18,29 @@ import win32evtlog
 import win32evtlogutil
 from PIL import Image, ImageFont, ImageDraw
 
-SPI_SETDESKWALLPAPER = 20
-DELAY = 3 * 60 * 1000  # 3 minutes in ms
-ERROR_DELAY = 10
+# CONFIG OPTIONS
 FILE_LIST_PATH = "wallpaper_files.txt"
 ADD_FILEPATH_TO_IMAGES = True
+FONT_NAME = "arial.ttf"
+TEXT_FILL = "yellow"
+STROKE_WIDTH = 2
+STROKE_FILL = "black"
+# Replace with screen size if you have trouble with different size monitors e.g. (1920, 1080)
+FORCE_MONITOR_SIZE: Optional[Tuple[int, int]] = None
+DELAY = 3 * 60 * 1000  # 3 minutes in ms
+ERROR_DELAY = 10 * 1000  # 10 seconds in ms
 
-font_path = "arial.ttf"
+# Global variables
 try:
-    FONT = ImageFont.truetype(font_path, 24)
+    FONT = ImageFont.truetype(FONT_NAME, 24)
 except OSError:
-    print(f"Couldn't find font at '{font_path}'")
+    print(f"Couldn't find font at '{FONT_NAME}'")
     FONT = ImageFont.load_default()
 TEMP_IMAGE_FILENAME = os.path.join(os.environ["TEMP"], "wallpaper")
 # Move wallpapers instead of deleting them as a safety against accidental deletion
 DELETED_IMAGE_PATH = "deleted_wallpaper"
-
-ICON_PATH = r"icon.webp"
+SPI_SETDESKWALLPAPER = 20
+ICON_PATH = "icon.webp"
 
 
 class PyWallpaper:
@@ -137,7 +144,10 @@ class PyWallpaper:
     def resize_image_to_bg(img: Image):
         # Determine aspect ratios
         image_aspect_ratio = img.width / img.height
-        monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+        if FORCE_MONITOR_SIZE:
+            monitor_width, monitor_height = FORCE_MONITOR_SIZE
+        else:
+            monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
         bg = Image.new("RGB", (monitor_width, monitor_height), "black")
         bg_aspect_ratio = bg.width / bg.height
         # Pick new image size
@@ -159,7 +169,14 @@ class PyWallpaper:
         text_x, text_y, text_width, text_height = draw.textbbox((0, 0), text, font=FONT)
         text_x = img.width - text_width - 10  # 10 pixels padding from the right
         text_y = img.height - text_height - 10  # 10 pixels padding from the bottom
-        draw.text((text_x, text_y), text, font=FONT, fill="yellow", stroke_width=2, stroke_fill="black")
+        draw.text(
+            (text_x, text_y),
+            text,
+            font=FONT,
+            fill=TEXT_FILL,
+            stroke_width=STROKE_WIDTH,
+            stroke_fill=STROKE_FILL
+        )
 
     def set_desktop_wallpaper(self, path: str) -> bool:
         path = os.path.abspath(path)
