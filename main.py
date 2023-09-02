@@ -114,6 +114,11 @@ class PyWallpaper:
     def trigger_image_loop(self):
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
+        if not self.file_list:
+            print('No images in the file list. Open the GUI and click the "Add Files to Wallpaper List" '
+                  'button to get started')
+            self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
+            return
         self.original_file_path = random.choice(self.file_list)
         print(self.original_file_path)
         try:
