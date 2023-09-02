@@ -101,6 +101,7 @@ class PyWallpaper:
     def read_file_list(self):
         if not os.path.isfile(FILE_LIST_PATH):
             self.file_list = []
+            return
         with open(FILE_LIST_PATH) as f:
             file_list = re.split(r"\r?\n", f.read())
             # Remove empty lines
