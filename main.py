@@ -102,14 +102,14 @@ class PyWallpaper:
         if not os.path.isfile(FILE_LIST_PATH):
             self.file_list = []
             return
-        with open(FILE_LIST_PATH) as f:
-            file_list = re.split(r"\r?\n", f.read())
+        with open(FILE_LIST_PATH, "rb") as f:
+            file_list = re.split(r"\r?\n", f.read().decode())
             # Remove empty lines
             self.file_list = [path for path in file_list if path]
 
     def write_file_list(self):
-        with open(FILE_LIST_PATH, "w") as f:
-            f.write("\r\n".join(self.file_list))
+        with open(FILE_LIST_PATH, "wb") as f:
+            f.write("\n".join(self.file_list).encode())
 
     def trigger_image_loop(self):
         if self.timer_id:
