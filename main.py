@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 import pystray
 import win32api
@@ -21,6 +21,7 @@ SPI_SETDESKWALLPAPER = 20
 DELAY = 3 * 60 * 1000  # 3 minutes in ms
 ERROR_DELAY = 10
 FILE_LIST_PATH = "wallpaper_files.txt"
+ADD_FILEPATH_TO_IMAGES = True
 
 font_path = "arial.ttf"
 try:
@@ -52,7 +53,7 @@ class PyWallpaper:
         self.menu = (
             pystray.MenuItem("Advance Image", self.advance_image, default=True),
             pystray.MenuItem("Open Image File", self.open_image_file),
-            pystray.MenuItem("Copy Image to Clipboard", self.copy_image_to_clipboard),
+            # pystray.MenuItem("Copy Image to Clipboard", self.copy_image_to_clipboard),
             pystray.MenuItem("Go to Image File in Explorer", self.go_to_image_file),
             pystray.MenuItem("Remove Image", self.remove_image_from_file_list),
             pystray.MenuItem("Delete Image", self.delete_image),
@@ -62,9 +63,20 @@ class PyWallpaper:
         )
         self.icon = pystray.Icon("pywallpaper", self.image, "pyWallpaper", self.menu)
 
-        # Create a button to minimize to tray
-        self.minimize_button = tk.Button(self.root, text="Minimize to Tray", command=self.minimize_to_tray)
-        self.minimize_button.pack(pady=20)
+        # Create GUI
+        self.add_button = tk.Button(self.root, text="Add Files to Wallpaper List", command=self.add_files_to_list)
+        self.add_button.pack(pady=10)
+        self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
+        self.show_button.pack()
+        self.add_filepath_to_images = tk.BooleanVar(value=ADD_FILEPATH_TO_IMAGES)
+        self.text_checkbox = tk.Checkbutton(
+            self.root,
+            text="Add Filepath to Images?",
+            variable=self.add_filepath_to_images,
+            onvalue=True,
+            offvalue=False
+        )
+        self.text_checkbox.pack(pady=10)
 
         # Intercept window close event
         self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
@@ -112,7 +124,8 @@ class PyWallpaper:
         # Resize and apply to background
         img = self.resize_image_to_bg(img)
         # Add text
-        self.add_text_to_image(img, file_path)
+        if self.add_filepath_to_images.get():
+            self.add_text_to_image(img, file_path)
         # Write to temp file
         ext = os.path.splitext(file_path)[1]
         temp_file_path = TEMP_IMAGE_FILENAME + ext
@@ -176,6 +189,20 @@ class PyWallpaper:
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
 
     # GUI Functions
+    def add_files_to_list(self):
+        file_paths = filedialog.askopenfilenames(
+            title="Select Images",
+            filetypes=(
+                ("Image Files", "*.gif;*.jpg;*.jpeg;*.png"),
+                ("All Files", "*.*"),
+            )
+        )
+        self.file_list += file_paths
+        self.write_file_list()
+
+    def show_file_list(self):
+        os.startfile(FILE_LIST_PATH)
+
     def advance_image(self, icon, item):
         self.trigger_image_loop()
 
