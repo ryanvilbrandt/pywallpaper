@@ -16,7 +16,7 @@ import win32api
 import win32clipboard
 import win32evtlog
 import win32evtlogutil
-from PIL import Image, ImageFont, ImageDraw
+from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 
 # CONFIG OPTIONS
 FILE_LIST_PATH = "wallpaper_files.txt"
@@ -127,7 +127,7 @@ class PyWallpaper:
         print(self.original_file_path)
         try:
             file_path = self.make_image(self.original_file_path)
-        except FileNotFoundError:
+        except (FileNotFoundError, UnidentifiedImageError):
             print(f"Couldn't open image path {self.original_file_path!r}", file=sys.stderr)
             self.timer_id = self.root.after(ERROR_DELAY, self.trigger_image_loop)
         else:
