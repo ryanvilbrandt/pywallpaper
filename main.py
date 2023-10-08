@@ -119,6 +119,10 @@ class PyWallpaper:
                   'button to get started')
             self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
             return
+        t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
+        t.start()
+
+    def set_new_wallpaper(self):
         self.original_file_path = random.choice(self.file_list)
         print(self.original_file_path)
         try:
