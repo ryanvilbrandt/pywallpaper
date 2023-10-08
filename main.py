@@ -109,7 +109,7 @@ class PyWallpaper:
 
     def write_file_list(self):
         with open(FILE_LIST_PATH, "wb") as f:
-            f.write("\n".join(self.file_list).encode())
+            f.write("\n".join(sorted(self.file_list)).encode())
 
     def trigger_image_loop(self):
         if self.timer_id:
@@ -227,6 +227,8 @@ class PyWallpaper:
         # If we're adding images to the file list for the first time, pick a random image after load
         advance_image_after_load = bool(not self.file_list)
         self.file_list += file_paths
+        # Remove duplicates from file list
+        self.file_list = list(set(self.file_list))
         self.write_file_list()
         if advance_image_after_load:
             self.trigger_image_loop()
