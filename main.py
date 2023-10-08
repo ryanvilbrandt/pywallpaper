@@ -275,7 +275,7 @@ class PyWallpaper:
             shutil.move(path, backup_path)
             self.remove_image_from_file_list_inner(path)
             print(f"Moving {path} to {backup_path}")
-            self.icon.notify("Deleted wallpaper", f"{path} has been deleted.")
+            self.icon.notify("Deleted wallpaper", f"{os.path.basename(path)} has been deleted.")
             self.advance_image(icon, item)
 
     def remove_image_from_file_list_inner(self, path: str):
