@@ -224,8 +224,12 @@ class PyWallpaper:
                 ("All Files", "*.*"),
             )
         )
+        # If we're adding images to the file list for the first time, pick a random image after load
+        advance_image_after_load = bool(not self.file_list)
         self.file_list += file_paths
         self.write_file_list()
+        if advance_image_after_load:
+            self.trigger_image_loop()
 
     def show_file_list(self):
         os.startfile(FILE_LIST_PATH)
