@@ -240,7 +240,7 @@ class PyWallpaper:
         self.trigger_image_loop()
 
     def open_image_file(self, icon, item):
-        subprocess.run(["cmd", "/c", "start", "", self.original_file_path.replace("/", "\\")])
+        subprocess.run(["cmd", "/c", "start", "", os.path.abspath(self.original_file_path)])
 
     def copy_image_to_clipboard(self, icon, item):
         # encoded_path = urllib.parse.quote(self.original_file_path, safe="")
@@ -258,11 +258,11 @@ class PyWallpaper:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, "\0")
-        win32clipboard.SetClipboardData(49159, self.original_file_path)  # FileNameW
+        win32clipboard.SetClipboardData(49159, os.path.abspath(self.original_file_path))  # FileNameW
         win32clipboard.CloseClipboard()
 
     def go_to_image_file(self, icon, item):
-        subprocess.Popen(["explorer", "/select,", self.original_file_path.replace("/", "\\")])
+        subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
 
     def remove_image_from_file_list(self, icon, item):
         self.remove_image_from_file_list_inner(self.original_file_path)
