@@ -127,15 +127,18 @@ class PyWallpaper:
     def set_new_wallpaper(self):
         self.original_file_path = random.choice(self.file_list)
         print(self.original_file_path)
+        delay = ERROR_DELAY
         try:
             file_path = self.make_image(self.original_file_path)
         except (FileNotFoundError, UnidentifiedImageError):
             print(f"Couldn't open image path {self.original_file_path!r}", file=sys.stderr)
-            self.timer_id = self.root.after(ERROR_DELAY, self.trigger_image_loop)
+        except OSError:
+            print(f"Failed to process image file: {self.original_file_path!r}", file=sys.stderr)
         else:
             success = self.set_desktop_wallpaper(file_path)
             # print(success)
-            self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
+            delay = DELAY
+        self.timer_id = self.root.after(delay, self.trigger_image_loop)
 
     def make_image(self, file_path: str) -> str:
         # Open image
