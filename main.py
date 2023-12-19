@@ -71,8 +71,10 @@ class PyWallpaper:
         self.icon = pystray.Icon("pywallpaper", self.image, "pyWallpaper", self.menu)
 
         # Create GUI
-        self.add_button = tk.Button(self.root, text="Add Files to Wallpaper List", command=self.add_files_to_list)
-        self.add_button.pack(pady=10)
+        self.add_files_button = tk.Button(self.root, text="Add Files to Wallpaper List", command=self.add_files_to_list)
+        self.add_files_button.pack()
+        self.add_folder_button = tk.Button(self.root, text="Add Folder to Wallpaper List", command=self.add_folder_to_list)
+        self.add_folder_button.pack(pady=10)
         self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
         self.show_button.pack()
         self.add_filepath_to_images = tk.BooleanVar(value=ADD_FILEPATH_TO_IMAGES)
@@ -224,6 +226,33 @@ class PyWallpaper:
                 ("All Files", "*.*"),
             )
         )
+        # If we're adding images to the file list for the first time, pick a random image after load
+        advance_image_after_load = bool(not self.file_list)
+        self.file_list += file_paths
+        # Remove duplicates from file list
+        self.file_list = list(set(self.file_list))
+        self.write_file_list()
+        if advance_image_after_load:
+            self.trigger_image_loop()
+
+    def add_folder_to_list(self):
+        dir_path = filedialog.askdirectory(
+            title="Select Image Folder",
+        )
+        include_subfolders = messagebox.askyesnocancel(
+            "Question",
+            f"You selected the folder {dir_path}\nDo you want to include subfolders?"
+        )
+        if include_subfolders is None:
+            return
+        file_paths = []
+        for dirpath, dirnames, filenames in os.walk(dir_path):
+            # If we don't want to include subfolders, clearing the `dirnames` list will stop os.walk() at the
+            # top-level directory.
+            if not include_subfolders:
+                dirnames.clear()
+            for filename in filenames:
+                file_paths.append(os.path.join(dirpath, filename).replace("\\", "/"))
         # If we're adding images to the file list for the first time, pick a random image after load
         advance_image_after_load = bool(not self.file_list)
         self.file_list += file_paths
