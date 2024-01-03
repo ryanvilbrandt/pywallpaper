@@ -1,15 +1,14 @@
 import ctypes
 import io
 import os
-import random
-import re
 import shutil
 import subprocess
 import sys
 import threading
 import tkinter as tk
+from time import time
 from tkinter import messagebox, filedialog
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Sequence
 
 import pystray
 import win32api
@@ -17,6 +16,8 @@ import win32clipboard
 import win32evtlog
 import win32evtlogutil
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
+
+from database.db import Db
 
 # CONFIG OPTIONS
 FILE_LIST_PATH = "wallpaper_files.txt"
@@ -45,7 +46,6 @@ ICON_PATH = "icon.webp"
 
 class PyWallpaper:
 
-    file_list = []
     original_file_path = None
     timer_id = None
 
@@ -75,8 +75,8 @@ class PyWallpaper:
         self.add_files_button.pack()
         self.add_folder_button = tk.Button(self.root, text="Add Folder to Wallpaper List", command=self.add_folder_to_list)
         self.add_folder_button.pack(pady=10)
-        self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
-        self.show_button.pack()
+        # self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
+        # self.show_button.pack()
         self.add_filepath_to_images = tk.BooleanVar(value=ADD_FILEPATH_TO_IMAGES)
         self.text_checkbox = tk.Checkbutton(
             self.root,
@@ -95,29 +95,27 @@ class PyWallpaper:
 
     # Loop functions
     def run(self):
-        self.read_file_list()
+        self.load_db()
         self.trigger_image_loop()
         self.run_icon_loop()
         self.root.mainloop()
 
-    def read_file_list(self):
-        if not os.path.isfile(FILE_LIST_PATH):
-            self.file_list = []
-            return
-        with open(FILE_LIST_PATH, "rb") as f:
-            file_list = re.split(r"\r?\n", f.read().decode())
-            # Remove empty lines
-            self.file_list = [path for path in file_list if path]
-
-    def write_file_list(self):
-        with open(FILE_LIST_PATH, "wb") as f:
-            f.write("\n".join(sorted(self.file_list)).encode())
+    @staticmethod
+    def load_db():
+        with Db() as db:
+            if os.path.isfile("wallpaper_files.txt"):
+                with open("wallpaper_files.txt", "rb") as f:
+                    wallpaper_files = f.read().decode().splitlines()
+                db.add_images(wallpaper_files)
 
     def trigger_image_loop(self):
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
-        if not self.file_list:
-            print('No images in the file list. Open the GUI and click the "Add Files to Wallpaper List" '
+
+        with Db() as db:
+            count = db.get_all_active_count()
+        if not count:
+            print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
                   'button to get started')
             self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
             return
@@ -125,7 +123,11 @@ class PyWallpaper:
         t.start()
 
     def set_new_wallpaper(self):
-        self.original_file_path = random.choice(self.file_list)
+        with Db() as db:
+            t1 = time()
+            self.original_file_path = db.get_random_image()
+            t2 = time()
+            print(f"Time to get random image: {t2 - t1}")
         print(self.original_file_path)
         delay = ERROR_DELAY
         try:
@@ -222,7 +224,7 @@ class PyWallpaper:
 
     # GUI Functions
     def add_files_to_list(self):
-        file_paths = filedialog.askopenfilenames(
+        file_paths: Sequence[str] = filedialog.askopenfilenames(
             title="Select Images",
             filetypes=(
                 ("Image Files", "*.gif;*.jpg;*.jpeg;*.png"),
@@ -230,11 +232,9 @@ class PyWallpaper:
             )
         )
         # If we're adding images to the file list for the first time, pick a random image after load
-        advance_image_after_load = bool(not self.file_list)
-        self.file_list += file_paths
-        # Remove duplicates from file list
-        self.file_list = list(set(self.file_list))
-        self.write_file_list()
+        with Db() as db:
+            advance_image_after_load = bool(not db.get_all_active_count())
+            db.add_images(file_paths)
         if advance_image_after_load:
             self.trigger_image_loop()
 
@@ -257,24 +257,22 @@ class PyWallpaper:
             for filename in filenames:
                 file_paths.append(os.path.join(dirpath, filename).replace("\\", "/"))
         # If we're adding images to the file list for the first time, pick a random image after load
-        advance_image_after_load = bool(not self.file_list)
-        self.file_list += file_paths
-        # Remove duplicates from file list
-        self.file_list = list(set(self.file_list))
-        self.write_file_list()
+        with Db() as db:
+            advance_image_after_load = bool(not db.get_all_active_count())
+            db.add_images(file_paths)
         if advance_image_after_load:
             self.trigger_image_loop()
 
-    def show_file_list(self):
-        os.startfile(FILE_LIST_PATH)
+    # def show_file_list(self):
+    #     os.startfile(FILE_LIST_PATH)
 
-    def advance_image(self, icon, item):
+    def advance_image(self, _icon, _item):
         self.trigger_image_loop()
 
-    def open_image_file(self, icon, item):
+    def open_image_file(self, _icon, _item):
         subprocess.run(["cmd", "/c", "start", "", os.path.abspath(self.original_file_path)])
 
-    def copy_image_to_clipboard(self, icon, item):
+    def copy_image_to_clipboard(self, _icon, _item):
         # encoded_path = urllib.parse.quote(self.original_file_path, safe="")
         # file_reference = f"file:{encoded_path}"
         # print(f"Copying {file_reference} to the clipboard")
@@ -293,39 +291,34 @@ class PyWallpaper:
         win32clipboard.SetClipboardData(49159, os.path.abspath(self.original_file_path))  # FileNameW
         win32clipboard.CloseClipboard()
 
-    def go_to_image_file(self, icon, item):
+    def go_to_image_file(self, _icon, _item):
         subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
 
-    def remove_image_from_file_list(self, icon, item):
-        self.remove_image_from_file_list_inner(self.original_file_path)
-        self.advance_image(icon, item)
+    def remove_image_from_file_list(self, _icon, _item):
+        with Db() as db:
+            db.set_image_to_inactive(self.original_file_path)
+        self.advance_image(_icon, _item)
 
-    def delete_image(self, icon, item):
+    def delete_image(self, _icon, _item):
         path = self.original_file_path
         result = messagebox.askokcancel("Delete image?", f"Are you sure you want to delete {path}")
         if result:
             ext = os.path.splitext(path)[1]
             backup_path = DELETED_IMAGE_PATH + ext
             shutil.move(path, backup_path)
-            self.remove_image_from_file_list_inner(path)
+            with Db() as db:
+                db.delete_image(path)
             print(f"Moving {path} to {backup_path}")
             self.icon.notify("Deleted wallpaper", f"{os.path.basename(path)} has been deleted.")
-            self.advance_image(icon, item)
-
-    def remove_image_from_file_list_inner(self, path: str):
-        self.file_list.remove(path)
-        self.write_file_list()
-        print("Removed {} from the file list")
+            self.advance_image(_icon, _item)
 
     def minimize_to_tray(self):
-        # self.root.iconify()  # Minimize the main window
         self.root.withdraw()  # Hide the main window
-        # self.icon.notify("App minimized", "The app has been minimized to the system tray.")
 
-    def restore_from_tray(self, icon, item):
+    def restore_from_tray(self, _icon, _item):
         self.root.deiconify()  # Restore the main window
 
-    def on_exit(self, *args):
+    def on_exit(self, *_args):
         self.icon.stop()  # Remove the system tray icon
         self.root.destroy()
 
