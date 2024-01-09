@@ -1,5 +1,0 @@
-CREATE TABLE IF NOT EXISTS images_default (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    filepath TEXT UNIQUE,
-    active BOOLEAN DEFAULT TRUE
-);

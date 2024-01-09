@@ -27,5 +27,5 @@ Change the `Force monitor size` config option to the correct monitor size. e.g. 
 
 * Display images in a given file list
 * Allow picking of file lists from within the app
-* App will watch for file changes in added folders
+* Add ability to remove folders that were added to file lists
 * Option to create auto-collage of random images for each wallpaper

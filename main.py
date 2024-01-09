@@ -6,9 +6,9 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from configparser import ConfigParser
-from time import time
 from tkinter import messagebox, filedialog
 from typing import Sequence, Union
 
@@ -140,11 +140,6 @@ class PyWallpaper:
     def load_db(self):
         with Db(table=self.table_name) as db:
             db.make_images_table()
-            if os.path.isfile("wallpaper_files.txt"):
-                with open("wallpaper_files.txt", "rb") as f:
-                    wallpaper_files = f.read().decode().splitlines()
-                db.add_images(wallpaper_files)
-                os.remove("wallpaper_files.txt")
 
     # Loop functions
     def run(self):
@@ -168,11 +163,11 @@ class PyWallpaper:
 
     def set_new_wallpaper(self):
         with Db(table=self.table_name) as db:
-            t1 = time()
+            t1 = time.perf_counter_ns()
             self.original_file_path = db.get_random_image()
-            t2 = time()
-            print(f"Time to get random image: {t2 - t1}")
-        print(self.original_file_path)
+            t2 = time.perf_counter_ns()
+            print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
+        print(f"Loading {self.original_file_path}")
         delay = self.error_delay
         try:
             file_path = self.make_image(self.original_file_path)
@@ -181,10 +176,11 @@ class PyWallpaper:
         except OSError:
             print(f"Failed to process image file: {self.original_file_path!r}", file=sys.stderr)
         else:
-            success = self.set_desktop_wallpaper(file_path)
-            # print(success)
+            self.set_desktop_wallpaper(file_path)
             delay = self.delay
         self.timer_id = self.root.after(delay, self.trigger_image_loop)
+        # Spend the idle time after a wallpaper has been set to refresh ephemeral images
+        self.refresh_ephemeral_images()
 
     def make_image(self, file_path: str) -> str:
         # Open image
@@ -197,7 +193,6 @@ class PyWallpaper:
         # Write to temp file
         ext = os.path.splitext(file_path)[1]
         temp_file_path = self.temp_image_filename + ext
-        print(temp_file_path)
         img.save(temp_file_path)
         return temp_file_path
 
@@ -291,6 +286,17 @@ class PyWallpaper:
         )
         if include_subfolders is None:
             return
+        with Db(table=self.table_name) as db:
+            # If we're adding images to the file list for the first time, pick a random image after load
+            advance_image_after_load = bool(not db.get_all_active_count())
+            db.add_directory(dir_path, include_subfolders)
+            file_paths = self.get_file_list_in_folder(dir_path, include_subfolders)
+            db.add_images(file_paths, ephemeral=True)
+        if advance_image_after_load:
+            self.trigger_image_loop()
+
+    @staticmethod
+    def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence[str]:
         file_paths = []
         for dirpath, dirnames, filenames in os.walk(dir_path):
             # If we don't want to include subfolders, clearing the `dirnames` list will stop os.walk() at the
@@ -299,12 +305,26 @@ class PyWallpaper:
                 dirnames.clear()
             for filename in filenames:
                 file_paths.append(os.path.join(dirpath, filename).replace("\\", "/"))
-        # If we're adding images to the file list for the first time, pick a random image after load
-        with Db(table=self.table_name) as db:
-            advance_image_after_load = bool(not db.get_all_active_count())
-            db.add_images(file_paths)
-        if advance_image_after_load:
-            self.trigger_image_loop()
+        return file_paths
+
+    def refresh_ephemeral_images(self):
+        """
+        Refresh images loaded as part of an included folder. We aren't removing old images because we want to keep
+        track of the per-image `active` flag, even for ephemeral images.
+        """
+        t1 = time.perf_counter_ns()
+        with Db(self.table_name) as db:
+            folder_list = db.get_active_folders()
+            file_paths = []
+            for folder in folder_list:
+                file_paths += self.get_file_list_in_folder(
+                    folder["filepath"],
+                    folder["include_subdirectories"]
+                )
+            if file_paths:
+                db.add_images(file_paths, ephemeral=True)
+        t2 = time.perf_counter_ns()
+        print(f"Time to refresh ephemeral images: {(t2 - t1) / 1000:,} us")
 
     def advance_image(self, _icon, _item):
         self.trigger_image_loop()

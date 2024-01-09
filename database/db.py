@@ -72,31 +72,34 @@ class Db:
         CREATE TABLE IF NOT EXISTS {self.table} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filepath TEXT UNIQUE,
-            active BOOLEAN DEFAULT TRUE
+            active BOOLEAN DEFAULT TRUE,
+            is_directory BOOLEAN DEFAULT FALSE,
+            include_subdirectories BOOLEAN DEFAULT FALSE,
+            ephemeral BOOLEAN DEFAULT FALSE
         );"""
         self.cur.execute(sql)
 
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""
-            SELECT * FROM {self.table} ORDER BY filepath;
+        SELECT * FROM {self.table} AND is_directory=0 ORDER BY filepath;
         """
         return self._fetch_all(sql)
 
     def get_all_active_images(self) -> Iterator[dict]:
         sql = f"""
-            SELECT * FROM {self.table} WHERE active=1;
+        SELECT * FROM {self.table} WHERE active=1 AND is_directory=0;
         """
         return self._fetch_all(sql)
 
     def get_all_active_count(self) -> int:
         sql = f"""
-            SELECT COUNT(*) FROM {self.table} WHERE active=1;
+        SELECT COUNT(*) FROM {self.table} WHERE active=1 AND is_directory=0;
         """
         return self._scalar(sql)
 
     def get_random_image(self) -> str:
         sql = f"""
-            SELECT filepath FROM {self.table} ORDER BY RANDOM() LIMIT 1;
+        SELECT filepath FROM {self.table} WHERE active=1 AND is_directory=0 ORDER BY RANDOM() LIMIT 1;
         """
         result = self._fetch_one(sql)
         return result["filepath"]
@@ -104,31 +107,51 @@ class Db:
     def get_random_image_v2(self) -> str:
         if self.ids is None:
             sql = f"""
-                SELECT id FROM {self.table};
+            SELECT id FROM {self.table} WHERE active=1 AND is_directory=0;
             """
             self.ids = self.cur.execute(sql).fetchall()
         sql = f"""
-            SELECT filepath FROM {self.table} WHERE id=?;
+        SELECT filepath FROM {self.table} WHERE id=?;
         """
         result = self._fetch_one(sql, [choice(self.ids)[0]])
         return result["filepath"]
 
-    def add_images(self, filepaths: Sequence[str]):
+    def get_active_folders(self) -> Iterator[dict]:
         sql = f"""
-        INSERT INTO {self.table}(filepath)
-        VALUES (?)
+        SELECT filepath, include_subdirectories FROM {self.table} WHERE active=1 AND is_directory=1;
+        """
+        return self._fetch_all(sql)
+
+    def add_images(self, filepaths: Sequence[str], ephemeral: bool = False) -> None:
+        sql = f"""
+        INSERT INTO {self.table}(filepath, ephemeral)
+        VALUES (?, ?)
         ON CONFLICT (filepath) DO NOTHING;
         """
-        self.cur.executemany(sql, [(f,) for f in filepaths])
+        self.cur.executemany(sql, [(f, ephemeral) for f in filepaths])
+
+    def add_directory(self, dir_path: str, include_subdirectories: bool = True) -> None:
+        sql = f"""
+        INSERT INTO {self.table}(filepath, is_directory, include_subdirectories)
+        VALUES (?, ?, ?)
+        ON CONFLICT (filepath) DO NOTHING;
+        """
+        self.cur.execute(sql, [dir_path, True, include_subdirectories])
+
+    def remove_ephemeral_images(self):
+        sql = """
+        DELETE FROM {self.table} WHERE ephemeral=1;
+        """
+        self.cur.execute(sql)
 
     def set_image_to_inactive(self, filepath: str):
         sql = f"""
-            UPDATE {self.table} SET active=false WHERE filepath=?;
+        UPDATE {self.table} SET active=false WHERE filepath=?;
         """
         self._execute(sql, [filepath])
 
     def delete_image(self, filepath: str):
         sql = f"""
-            DELETE FROM {self.table} WHERE filepath=?;
+        DELETE FROM {self.table} WHERE filepath=?;
         """
         self._execute(sql, [filepath])
