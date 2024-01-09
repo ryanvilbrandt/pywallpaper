@@ -349,7 +349,11 @@ class PyWallpaper:
             with Db(table=self.table_name) as db:
                 db.delete_image(path)
             print(f"Moving {path} to {backup_path}")
-            self.icon.notify("Deleted wallpaper", f"{os.path.basename(path)} has been deleted.")
+            notification = "{os.path.basename(path)} has been deleted."
+            if len(notification) > 64:
+                notification = "..." + notification[-61:]
+            self.icon.notify("Deleted wallpaper", notification)
+
             self.advance_image(_icon, _item)
 
     def minimize_to_tray(self):
