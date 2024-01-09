@@ -206,7 +206,7 @@ class PyWallpaper:
         image_aspect_ratio = img.width / img.height
         force_monitor_size = self.config.get("Settings", "Force monitor size")
         if force_monitor_size:
-            monitor_width, monitor_height = force_monitor_size
+            monitor_width, monitor_height = [int(x) for x in force_monitor_size.split(", ")]
         else:
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
         bg = Image.new("RGB", (monitor_width, monitor_height), "black")
