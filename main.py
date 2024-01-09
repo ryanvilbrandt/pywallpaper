@@ -344,7 +344,7 @@ class PyWallpaper:
         result = messagebox.askokcancel("Delete image?", f"Are you sure you want to delete {path}")
         if result:
             ext = os.path.splitext(path)[1]
-            backup_path = self.config.get("Advance", "Deleted image path") + ext
+            backup_path = self.config.get("Advanced", "Deleted image path") + ext
             shutil.move(path, backup_path)
             with Db(table=self.table_name) as db:
                 db.delete_image(path)
