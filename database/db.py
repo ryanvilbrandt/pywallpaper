@@ -9,11 +9,13 @@ from database.build_db import build_db
 
 
 class Db:
+    table = None
     auto_commit = False
     auto_close = False
     ids = None
 
-    def __init__(self, filename="database/main.db"):
+    def __init__(self, table="images", filename="database/main.db"):
+        self.table = table
         if not os.path.isfile(filename):
             build_db()
         self.conn = sqlite3.connect(filename)
@@ -70,58 +72,58 @@ class Db:
     # IMAGES
 
     def get_all_images(self) -> Iterator[dict]:
-        sql = """
-            SELECT * FROM images ORDER BY filepath;
+        sql = f"""
+            SELECT * FROM {self.table} ORDER BY filepath;
         """
         return self._fetch_all(sql)
 
     def get_all_active_images(self) -> Iterator[dict]:
-        sql = """
-            SELECT * FROM images WHERE active=1;
+        sql = f"""
+            SELECT * FROM {self.table} WHERE active=1;
         """
         return self._fetch_all(sql)
 
     def get_all_active_count(self) -> int:
-        sql = """
-            SELECT COUNT(*) FROM images WHERE active=1;
+        sql = f"""
+            SELECT COUNT(*) FROM {self.table} WHERE active=1;
         """
         return self._scalar(sql)
 
     def get_random_image(self) -> str:
-        sql = """
-            SELECT filepath FROM images ORDER BY RANDOM() LIMIT 1;
+        sql = f"""
+            SELECT filepath FROM {self.table} ORDER BY RANDOM() LIMIT 1;
         """
         result = self._fetch_one(sql)
         return result["filepath"]
 
     def get_random_image_v2(self) -> str:
         if self.ids is None:
-            sql = """
-                SELECT id FROM images;
+            sql = f"""
+                SELECT id FROM {self.table};
             """
             self.ids = self.cur.execute(sql).fetchall()
-        sql = """
-            SELECT filepath FROM images WHERE id=?;
+        sql = f"""
+            SELECT filepath FROM {self.table} WHERE id=?;
         """
         result = self._fetch_one(sql, [choice(self.ids)[0]])
         return result["filepath"]
 
     def add_images(self, filepaths: Sequence[str]):
-        sql = """
-        INSERT INTO images(filepath)
+        sql = f"""
+        INSERT INTO {self.table}(filepath)
         VALUES (?)
         ON CONFLICT (filepath) DO NOTHING;
         """
         self.cur.executemany(sql, [(f,) for f in filepaths])
 
     def set_image_to_inactive(self, filepath: str):
-        sql = """
-            UPDATE images SET active=false WHERE filepath=?;
+        sql = f"""
+            UPDATE {self.table} SET active=false WHERE filepath=?;
         """
         self._execute(sql, [filepath])
 
     def delete_image(self, filepath: str):
-        sql = """
-            DELETE FROM images WHERE filepath=?;
+        sql = f"""
+            DELETE FROM {self.table} WHERE filepath=?;
         """
         self._execute(sql, [filepath])

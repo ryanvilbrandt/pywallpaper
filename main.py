@@ -20,6 +20,7 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from database.db import Db
 
 # CONFIG OPTIONS
+FILE_LIST = "default"
 FILE_LIST_PATH = "wallpaper_files.txt"
 ADD_FILEPATH_TO_IMAGES = True
 FONT_NAME = "arial.ttf"
@@ -102,7 +103,7 @@ class PyWallpaper:
 
     @staticmethod
     def load_db():
-        with Db() as db:
+        with Db(table=f"images_{FILE_LIST}") as db:
             if os.path.isfile("wallpaper_files.txt"):
                 with open("wallpaper_files.txt", "rb") as f:
                     wallpaper_files = f.read().decode().splitlines()
@@ -112,7 +113,7 @@ class PyWallpaper:
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
 
-        with Db() as db:
+        with Db(table=f"images_{FILE_LIST}") as db:
             count = db.get_all_active_count()
         if not count:
             print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
@@ -123,7 +124,7 @@ class PyWallpaper:
         t.start()
 
     def set_new_wallpaper(self):
-        with Db() as db:
+        with Db(table=f"images_{FILE_LIST}") as db:
             t1 = time()
             self.original_file_path = db.get_random_image()
             t2 = time()
@@ -232,7 +233,7 @@ class PyWallpaper:
             )
         )
         # If we're adding images to the file list for the first time, pick a random image after load
-        with Db() as db:
+        with Db(table=f"images_{FILE_LIST}") as db:
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_images(file_paths)
         if advance_image_after_load:
@@ -257,7 +258,7 @@ class PyWallpaper:
             for filename in filenames:
                 file_paths.append(os.path.join(dirpath, filename).replace("\\", "/"))
         # If we're adding images to the file list for the first time, pick a random image after load
-        with Db() as db:
+        with Db(table=f"images_{FILE_LIST}") as db:
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_images(file_paths)
         if advance_image_after_load:
@@ -295,7 +296,7 @@ class PyWallpaper:
         subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
 
     def remove_image_from_file_list(self, _icon, _item):
-        with Db() as db:
+        with Db(table=f"images_{FILE_LIST}") as db:
             db.set_image_to_inactive(self.original_file_path)
         self.advance_image(_icon, _item)
 
@@ -306,7 +307,7 @@ class PyWallpaper:
             ext = os.path.splitext(path)[1]
             backup_path = DELETED_IMAGE_PATH + ext
             shutil.move(path, backup_path)
-            with Db() as db:
+            with Db(table=f"images_{FILE_LIST}") as db:
                 db.delete_image(path)
             print(f"Moving {path} to {backup_path}")
             self.icon.notify("Deleted wallpaper", f"{os.path.basename(path)} has been deleted.")
