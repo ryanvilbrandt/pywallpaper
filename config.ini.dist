@@ -1,0 +1,23 @@
+[Settings]
+# Name of the file list to use
+File list = default
+# The time delay between wallpapers
+Delay = 3m
+# The time delay after a wallpaper fails to load
+Error delay = 10s
+# Replace with screen size if you have trouble with multiple monitors of different sizes e.g. `1920, 1080`
+Force monitor size =
+
+[Filepath]
+Add filepath to images = true
+Font name = arial.ttf
+Font size = 24
+Text fill = yellow
+Stroke width = 2
+Stroke fill = black
+
+[Advanced]
+# Don't mess with these unless you know what you're doing
+Temp image filename = wallpaper
+Deleted image path = deleted_wallpaper
+Icon path = icon.webp

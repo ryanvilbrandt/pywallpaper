@@ -1,14 +1,16 @@
 import ctypes
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import tkinter as tk
+from configparser import ConfigParser
 from time import time
 from tkinter import messagebox, filedialog
-from typing import Optional, Tuple, Sequence
+from typing import Sequence, Union
 
 import pystray
 import win32api
@@ -19,45 +21,84 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 
 from database.db import Db
 
-# CONFIG OPTIONS
-FILE_LIST = "default"
-FILE_LIST_PATH = "wallpaper_files.txt"
-ADD_FILEPATH_TO_IMAGES = True
-FONT_NAME = "arial.ttf"
-TEXT_FILL = "yellow"
-STROKE_WIDTH = 2
-STROKE_FILL = "black"
-# Replace with screen size if you have trouble with different size monitors e.g. (1920, 1080)
-FORCE_MONITOR_SIZE: Optional[Tuple[int, int]] = None
-DELAY = 3 * 60 * 1000  # 3 minutes in ms
-ERROR_DELAY = 10 * 1000  # 10 seconds in ms
-
 # Global variables
-try:
-    FONT = ImageFont.truetype(FONT_NAME, 24)
-except OSError:
-    print(f"Couldn't find font at '{FONT_NAME}'")
-    FONT = ImageFont.load_default()
-TEMP_IMAGE_FILENAME = os.path.join(os.environ["TEMP"], "wallpaper")
-# Move wallpapers instead of deleting them as a safety against accidental deletion
-DELETED_IMAGE_PATH = "deleted_wallpaper"
 SPI_SETDESKWALLPAPER = 20
-ICON_PATH = "icon.webp"
 
 
 class PyWallpaper:
+
+    config = None
+    table_name = None
+    delay = None
+    error_delay = None
+    font = None
+    temp_image_filename = None
 
     original_file_path = None
     timer_id = None
 
     def __init__(self):
+        self.load_config()
+        self.load_gui()
+        self.load_db()
+
+    def load_config(self):
+        c = ConfigParser()
+        if not os.path.isfile("config.ini"):
+            shutil.copy("config.ini.dist", "config.ini")
+        c.read("config.ini")
+        self.config = c
+
+        self.table_name = f'images_{c.get("Settings", "File list")}'
+        self.delay = int(self.parse_timestring(c.get("Settings", "Delay")) * 1000)
+        self.error_delay = int(self.parse_timestring(c.get("Settings", "Error delay")) * 1000)
+
+        font_name = c.get("Filepath", "Font name")
+        try:
+            self.font = ImageFont.truetype(
+                font_name,
+                c.getint("Filepath", "Font size")
+            )
+        except OSError:
+            print(f"Couldn't find font at '{font_name}'")
+            self.font = ImageFont.load_default()
+
+        self.temp_image_filename = os.path.join(
+            os.environ["TEMP"],
+            c.get("Advanced", "Temp image filename")
+        )
+
+    @staticmethod
+    def parse_timestring(timestring: Union[str, int, float]) -> float:
+        """
+        Converts strings of 3m or 10s or 12m34s into number of seconds
+        """
+        if isinstance(timestring, (int, float)):
+            return float(timestring)
+        m = re.match(r"((\d+)h)?((\d+)m)?((\d+)s)?", timestring)
+        seconds = 0.0
+        try:
+            seconds += int(m.group(2)) * 3600  # hours
+        except TypeError:
+            pass
+        try:
+            seconds += int(m.group(4)) * 60  # minutes
+        except TypeError:
+            pass
+        try:
+            seconds += int(m.group(6))  # seconds
+        except TypeError:
+            pass
+        return seconds
+
+    def load_gui(self):
         self.root = tk.Tk()
         self.root.title("pyWallpaper")
 
         self.root.wm_minsize(width=200, height=100)
 
         # Create a system tray icon
-        self.image = Image.open(ICON_PATH)
+        self.image = Image.open(self.config.get("Advanced", "Icon path"))
         self.menu = (
             pystray.MenuItem("Advance Image", self.advance_image, default=True),
             pystray.MenuItem("Open Image File", self.open_image_file),
@@ -78,7 +119,9 @@ class PyWallpaper:
         self.add_folder_button.pack(pady=10)
         # self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
         # self.show_button.pack()
-        self.add_filepath_to_images = tk.BooleanVar(value=ADD_FILEPATH_TO_IMAGES)
+        self.add_filepath_to_images = tk.BooleanVar(
+            value=self.config.getboolean("Filepath", "Add filepath to images")
+        )
         self.text_checkbox = tk.Checkbutton(
             self.root,
             text="Add Filepath to Images?",
@@ -94,43 +137,43 @@ class PyWallpaper:
         # Hide main window to start
         self.root.withdraw()
 
-    # Loop functions
-    def run(self):
-        self.load_db()
-        self.trigger_image_loop()
-        self.run_icon_loop()
-        self.root.mainloop()
-
-    @staticmethod
-    def load_db():
-        with Db(table=f"images_{FILE_LIST}") as db:
+    def load_db(self):
+        with Db(table=self.table_name) as db:
+            db.make_images_table()
             if os.path.isfile("wallpaper_files.txt"):
                 with open("wallpaper_files.txt", "rb") as f:
                     wallpaper_files = f.read().decode().splitlines()
                 db.add_images(wallpaper_files)
+                os.remove("wallpaper_files.txt")
+
+    # Loop functions
+    def run(self):
+        self.trigger_image_loop()
+        self.run_icon_loop()
+        self.root.mainloop()
 
     def trigger_image_loop(self):
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
 
-        with Db(table=f"images_{FILE_LIST}") as db:
+        with Db(table=self.table_name) as db:
             count = db.get_all_active_count()
         if not count:
             print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
                   'button to get started')
-            self.timer_id = self.root.after(DELAY, self.trigger_image_loop)
+            self.timer_id = self.root.after(self.delay, self.trigger_image_loop)
             return
         t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
         t.start()
 
     def set_new_wallpaper(self):
-        with Db(table=f"images_{FILE_LIST}") as db:
+        with Db(table=self.table_name) as db:
             t1 = time()
             self.original_file_path = db.get_random_image()
             t2 = time()
             print(f"Time to get random image: {t2 - t1}")
         print(self.original_file_path)
-        delay = ERROR_DELAY
+        delay = self.error_delay
         try:
             file_path = self.make_image(self.original_file_path)
         except (FileNotFoundError, UnidentifiedImageError):
@@ -140,7 +183,7 @@ class PyWallpaper:
         else:
             success = self.set_desktop_wallpaper(file_path)
             # print(success)
-            delay = DELAY
+            delay = self.delay
         self.timer_id = self.root.after(delay, self.trigger_image_loop)
 
     def make_image(self, file_path: str) -> str:
@@ -153,17 +196,17 @@ class PyWallpaper:
             self.add_text_to_image(img, file_path)
         # Write to temp file
         ext = os.path.splitext(file_path)[1]
-        temp_file_path = TEMP_IMAGE_FILENAME + ext
+        temp_file_path = self.temp_image_filename + ext
         print(temp_file_path)
         img.save(temp_file_path)
         return temp_file_path
 
-    @staticmethod
-    def resize_image_to_bg(img: Image):
+    def resize_image_to_bg(self, img: Image):
         # Determine aspect ratios
         image_aspect_ratio = img.width / img.height
-        if FORCE_MONITOR_SIZE:
-            monitor_width, monitor_height = FORCE_MONITOR_SIZE
+        force_monitor_size = self.config.get("Settings", "Force monitor size")
+        if force_monitor_size:
+            monitor_width, monitor_height = force_monitor_size
         else:
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
         bg = Image.new("RGB", (monitor_width, monitor_height), "black")
@@ -181,19 +224,18 @@ class PyWallpaper:
         bg.paste(img, (paste_x, paste_y))
         return bg
 
-    @staticmethod
-    def add_text_to_image(img: Image, text: str):
+    def add_text_to_image(self, img: Image, text: str):
         draw = ImageDraw.Draw(img)
-        text_x, text_y, text_width, text_height = draw.textbbox((0, 0), text, font=FONT)
+        text_x, text_y, text_width, text_height = draw.textbbox((0, 0), text, font=self.font)
         text_x = img.width - text_width - 10  # 10 pixels padding from the right
         text_y = img.height - text_height - 10  # 10 pixels padding from the bottom
         draw.text(
             (text_x, text_y),
             text,
-            font=FONT,
-            fill=TEXT_FILL,
-            stroke_width=STROKE_WIDTH,
-            stroke_fill=STROKE_FILL
+            font=self.font,
+            fill=self.config.get("Filepath", "Text fill"),
+            stroke_width=self.config.getint("Filepath", "Stroke width"),
+            stroke_fill=self.config.get("Filepath", "Stroke fill")
         )
 
     def set_desktop_wallpaper(self, path: str) -> bool:
@@ -233,7 +275,7 @@ class PyWallpaper:
             )
         )
         # If we're adding images to the file list for the first time, pick a random image after load
-        with Db(table=f"images_{FILE_LIST}") as db:
+        with Db(table=self.table_name) as db:
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_images(file_paths)
         if advance_image_after_load:
@@ -258,14 +300,11 @@ class PyWallpaper:
             for filename in filenames:
                 file_paths.append(os.path.join(dirpath, filename).replace("\\", "/"))
         # If we're adding images to the file list for the first time, pick a random image after load
-        with Db(table=f"images_{FILE_LIST}") as db:
+        with Db(table=self.table_name) as db:
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_images(file_paths)
         if advance_image_after_load:
             self.trigger_image_loop()
-
-    # def show_file_list(self):
-    #     os.startfile(FILE_LIST_PATH)
 
     def advance_image(self, _icon, _item):
         self.trigger_image_loop()
@@ -296,7 +335,7 @@ class PyWallpaper:
         subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
 
     def remove_image_from_file_list(self, _icon, _item):
-        with Db(table=f"images_{FILE_LIST}") as db:
+        with Db(table=self.table_name) as db:
             db.set_image_to_inactive(self.original_file_path)
         self.advance_image(_icon, _item)
 
@@ -305,9 +344,9 @@ class PyWallpaper:
         result = messagebox.askokcancel("Delete image?", f"Are you sure you want to delete {path}")
         if result:
             ext = os.path.splitext(path)[1]
-            backup_path = DELETED_IMAGE_PATH + ext
+            backup_path = self.config.get("Advance", "Deleted image path") + ext
             shutil.move(path, backup_path)
-            with Db(table=f"images_{FILE_LIST}") as db:
+            with Db(table=self.table_name) as db:
                 db.delete_image(path)
             print(f"Moving {path} to {backup_path}")
             self.icon.notify("Deleted wallpaper", f"{os.path.basename(path)} has been deleted.")

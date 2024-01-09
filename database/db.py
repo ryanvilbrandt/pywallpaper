@@ -5,8 +5,6 @@ from random import choice
 from sqlite3 import Cursor
 from typing import Optional, Iterator, Union, Sequence
 
-from database.build_db import build_db
-
 
 class Db:
     table = None
@@ -16,8 +14,6 @@ class Db:
 
     def __init__(self, table="images", filename="database/main.db"):
         self.table = table
-        if not os.path.isfile(filename):
-            build_db()
         self.conn = sqlite3.connect(filename)
         self.cur = self.conn.cursor()
 
@@ -70,6 +66,15 @@ class Db:
             yield self._row_to_dict(row)
 
     # IMAGES
+
+    def make_images_table(self):
+        sql = f"""
+        CREATE TABLE IF NOT EXISTS {self.table} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filepath TEXT UNIQUE,
+            active BOOLEAN DEFAULT TRUE
+        );"""
+        self.cur.execute(sql)
 
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""
