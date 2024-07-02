@@ -6,15 +6,14 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter as tk
 from configparser import ConfigParser
-from tkinter import messagebox, filedialog
 from typing import Sequence, Union
 
 import pystray
 import win32api
 import win32evtlog
 import win32evtlogutil
+import wx
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 
 from database.db import Db
@@ -23,7 +22,7 @@ from database.db import Db
 SPI_SET_DESKTOP_WALLPAPER = 20
 
 
-class PyWallpaper:
+class PyWallpaper(wx.Frame):
 
     config = None
     table_name = None
@@ -41,6 +40,7 @@ class PyWallpaper:
     add_files_button, add_folder_button, text_checkbox = None, None, None
 
     def __init__(self):
+        super().__init__(None, title="pyWallpaper")
         self.load_config()
         self.load_gui()
         self.load_db()
@@ -95,10 +95,7 @@ class PyWallpaper:
         return seconds
 
     def load_gui(self):
-        self.root = tk.Tk()
-        self.root.title("pyWallpaper")
-
-        self.root.wm_minsize(width=200, height=100)
+        # self.root.wm_minsize(width=200, height=100)
 
         # Create a system tray icon
         self.image = Image.open(self.config.get("Advanced", "Icon path"))
@@ -116,37 +113,54 @@ class PyWallpaper:
         self.icon = pystray.Icon("pywallpaper", self.image, "pyWallpaper", self.menu)
 
         # Create GUI
-        self.add_files_button = tk.Button(
-            self.root,
-            text="Add Files to Wallpaper List",
-            command=self.add_files_to_list
-        )
-        self.add_files_button.pack()
-        self.add_folder_button = tk.Button(
-            self.root,
-            text="Add Folder to Wallpaper List",
-            command=self.add_folder_to_list
-        )
-        self.add_folder_button.pack(pady=10)
-        # self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
-        # self.show_button.pack()
-        self.add_filepath_to_images = tk.BooleanVar(
-            value=self.config.getboolean("Filepath", "Add filepath to images")
-        )
-        self.text_checkbox = tk.Checkbutton(
-            self.root,
-            text="Add Filepath to Images?",
-            variable=self.add_filepath_to_images,
-            onvalue=True,
-            offvalue=False
-        )
-        self.text_checkbox.pack(pady=10)
+        # self.add_files_button = tk.Button(
+        #     self.root,
+        #     text="Add Files to Wallpaper List",
+        #     command=self.add_files_to_list
+        # )
+        # self.add_files_button.pack()
+        # self.add_folder_button = tk.Button(
+        #     self.root,
+        #     text="Add Folder to Wallpaper List",
+        #     command=self.add_folder_to_list
+        # )
+        # self.add_folder_button.pack(pady=10)
+        # # self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
+        # # self.show_button.pack()
+        # self.add_filepath_to_images = tk.BooleanVar(
+        #     value=self.config.getboolean("Filepath", "Add filepath to images")
+        # )
+        # self.text_checkbox = tk.Checkbutton(
+        #     self.root,
+        #     text="Add Filepath to Images?",
+        #     variable=self.add_filepath_to_images,
+        #     onvalue=True,
+        #     offvalue=False
+        # )
+        # self.text_checkbox.pack(pady=10)
 
-        # Intercept window close event
-        self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
+        # # Intercept window close event
+        # self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
+        #
+        # # Hide main window to start
+        # self.root.withdraw()
+        # create a panel in the frame
 
-        # Hide main window to start
-        self.root.withdraw()
+        p = wx.Panel(self)
+
+        self.add_files_button = wx.Button(p, label="Add Files to Wallpaper List")
+        self.add_files_button.Bind(wx.EVT_BUTTON, self.add_files_to_list)
+        self.add_folder_button = wx.Button(p, label="Add Folder to Wallpaper List")
+        self.add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
+        self.delete_button = wx.Button(p, label="Delete")
+        self.delete_button.Bind(wx.EVT_BUTTON, self.delete_image)
+
+        # and create a sizer to manage the layout of child widgets
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.add_files_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
+        sizer.Add(self.add_folder_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
+        sizer.Add(self.delete_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
+        p.SetSizer(sizer)
 
     def load_db(self):
         with Db(table=self.table_name) as db:
@@ -272,14 +286,12 @@ class PyWallpaper:
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
 
     # GUI Functions
-    def add_files_to_list(self):
-        file_paths: Sequence[str] = filedialog.askopenfilenames(
-            title="Select Images",
-            filetypes=(
-                ("Image Files", "*.gif;*.jpg;*.jpeg;*.png"),
-                ("All Files", "*.*"),
-            )
-        )
+    def add_files_to_list(self, event):
+        with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return
+            file_paths = fileDialog.GetPaths()
         # If we're adding images to the file list for the first time, pick a random image after load
         with Db(table=self.table_name) as db:
             advance_image_after_load = bool(not db.get_all_active_count())
@@ -287,16 +299,17 @@ class PyWallpaper:
         if advance_image_after_load:
             self.trigger_image_loop()
 
-    def add_folder_to_list(self):
-        dir_path = filedialog.askdirectory(
-            title="Select Image Folder",
-        )
-        include_subfolders = messagebox.askyesnocancel(
-            "Question",
-            f"You selected the folder {dir_path}\nDo you want to include subfolders?"
-        )
-        if include_subfolders is None:
-            return
+    def add_folder_to_list(self, event):
+        with wx.DirDialog(self, "Select Image Folder", style=wx.DD_DIR_MUST_EXIST) as dirDialog:
+            if dirDialog.ShowModal() == wx.ID_CANCEL:
+                return
+            dir_path = dirDialog.GetPath()
+        title, message = "Question", f"You selected the folder {dir_path}\nDo you want to include subfolders?"
+        with wx.MessageDialog(self, message, title, style=wx.ICON_QUESTION | wx.YES_NO | wx.CANCEL) as messageDialog:
+            answer = messageDialog.ShowModal()
+            if answer == wx.ID_CANCEL:
+                return
+            include_subfolders = answer == wx.ID_YES
         with Db(table=self.table_name) as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
@@ -372,22 +385,27 @@ class PyWallpaper:
             db.set_image_to_inactive(self.original_file_path)
         self.advance_image(_icon, _item)
 
-    def delete_image(self, _icon, _item):
+    def delete_image(self, _event):
         path = self.original_file_path
-        result = messagebox.askokcancel("Delete image?", f"Are you sure you want to delete {path}")
-        if result:
-            ext = os.path.splitext(path)[1]
-            backup_path = self.config.get("Advanced", "Deleted image path") + ext
-            shutil.move(path, backup_path)
-            with Db(table=self.table_name) as db:
-                db.delete_image(path)
-            print(f"Moving {path} to {backup_path}")
-            notification = f"{os.path.basename(path)} has been deleted."
-            if len(notification) > 64:
-                notification = "..." + notification[-61:]
-            self.icon.notify("Deleted wallpaper", notification)
+        title, message = "Delete image?", f"Are you sure you want to delete {path}"
+        with wx.MessageDialog(self, message, title, style=wx.ICON_WARNING | wx.YES_NO) as messageDialog:
+            answer = messageDialog.ShowModal()
+            if answer == wx.ID_NO:
+                return
+        print("KILL IT!")
+        return
+        ext = os.path.splitext(path)[1]
+        backup_path = self.config.get("Advanced", "Deleted image path") + ext
+        shutil.move(path, backup_path)
+        with Db(table=self.table_name) as db:
+            db.delete_image(path)
+        print(f"Moving {path} to {backup_path}")
+        notification = f"{os.path.basename(path)} has been deleted."
+        if len(notification) > 64:
+            notification = "..." + notification[-61:]
+        self.icon.notify("Deleted wallpaper", notification)
 
-            self.advance_image(_icon, _item)
+        self.advance_image(_icon, _item)
 
     def minimize_to_tray(self):
         self.root.withdraw()  # Hide the main window
@@ -400,6 +418,10 @@ class PyWallpaper:
         self.root.destroy()
 
 
-if __name__ == "__main__":
-    app = PyWallpaper()
-    app.run()
+if __name__ == '__main__':
+    # When this module is run (not imported) then create the app, the
+    # frame, show it, and start the event loop.
+    app = wx.App()
+    frm = PyWallpaper()
+    frm.Show()
+    app.MainLoop()
