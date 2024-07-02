@@ -1,5 +1,4 @@
 import ctypes
-import io
 import os
 import re
 import shutil
@@ -14,7 +13,6 @@ from typing import Sequence, Union
 
 import pystray
 import win32api
-import win32clipboard
 import win32evtlog
 import win32evtlogutil
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
@@ -22,7 +20,7 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from database.db import Db
 
 # Global variables
-SPI_SETDESKWALLPAPER = 20
+SPI_SET_DESKTOP_WALLPAPER = 20
 
 
 class PyWallpaper:
@@ -36,6 +34,11 @@ class PyWallpaper:
 
     original_file_path = None
     timer_id = None
+    add_filepath_to_images = None
+
+    # GUI Elements
+    root, image, menu, icon = None, None, None, None
+    add_files_button, add_folder_button, text_checkbox = None, None, None
 
     def __init__(self):
         self.load_config()
@@ -113,9 +116,17 @@ class PyWallpaper:
         self.icon = pystray.Icon("pywallpaper", self.image, "pyWallpaper", self.menu)
 
         # Create GUI
-        self.add_files_button = tk.Button(self.root, text="Add Files to Wallpaper List", command=self.add_files_to_list)
+        self.add_files_button = tk.Button(
+            self.root,
+            text="Add Files to Wallpaper List",
+            command=self.add_files_to_list
+        )
         self.add_files_button.pack()
-        self.add_folder_button = tk.Button(self.root, text="Add Folder to Wallpaper List", command=self.add_folder_to_list)
+        self.add_folder_button = tk.Button(
+            self.root,
+            text="Add Folder to Wallpaper List",
+            command=self.add_folder_to_list
+        )
         self.add_folder_button.pack(pady=10)
         # self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
         # self.show_button.pack()
@@ -244,7 +255,7 @@ class PyWallpaper:
             )
             return False
         self.create_windows_event_log("Setting wallpaper to {}".format(path))
-        ctypes.windll.user32.SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, path, 0)
+        ctypes.windll.user32.SystemParametersInfoW(SPI_SET_DESKTOP_WALLPAPER, 0, path, 0)
         return True
 
     @staticmethod
@@ -298,13 +309,13 @@ class PyWallpaper:
     @staticmethod
     def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence[str]:
         file_paths = []
-        for dirpath, dirnames, filenames in os.walk(dir_path):
-            # If we don't want to include subfolders, clearing the `dirnames` list will stop os.walk() at the
+        for dir_path, dir_names, filenames in os.walk(dir_path):
+            # If we don't want to include subfolders, clearing the `dir_names` list will stop os.walk() at the
             # top-level directory.
             if not include_subfolders:
-                dirnames.clear()
+                dir_names.clear()
             for filename in filenames:
-                file_paths.append(os.path.join(dirpath, filename).replace("\\", "/"))
+                file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
         return file_paths
 
     def refresh_ephemeral_images(self):
@@ -313,6 +324,7 @@ class PyWallpaper:
         track of the per-image `active` flag, even for ephemeral images.
         """
         t1 = time.perf_counter_ns()
+        images_updated = 0
         with Db(self.table_name) as db:
             folder_list = db.get_active_folders()
             file_paths = []
@@ -323,8 +335,9 @@ class PyWallpaper:
                 )
             if file_paths:
                 db.add_images(file_paths, ephemeral=True)
+                images_updated += len(file_paths)
         t2 = time.perf_counter_ns()
-        print(f"Time to refresh ephemeral images: {(t2 - t1) / 1000:,} us")
+        print(f"{images_updated} ephemeral images were found in {(t2 - t1) / 1000:,} μs")
 
     def advance_image(self, _icon, _item):
         self.trigger_image_loop()
@@ -332,24 +345,24 @@ class PyWallpaper:
     def open_image_file(self, _icon, _item):
         subprocess.run(["cmd", "/c", "start", "", os.path.abspath(self.original_file_path)])
 
-    def copy_image_to_clipboard(self, _icon, _item):
-        # encoded_path = urllib.parse.quote(self.original_file_path, safe="")
-        # file_reference = f"file:{encoded_path}"
-        # print(f"Copying {file_reference} to the clipboard")
-        #
-        # pyperclip.copy(file_reference)
-
-        img = Image.open(self.original_file_path)
-        output = io.BytesIO()
-        img.convert('RGB').save(output, 'BMP')
-        data = output.getvalue()[14:]
-        output.close()
-
-        win32clipboard.OpenClipboard()
-        win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, "\0")
-        win32clipboard.SetClipboardData(49159, os.path.abspath(self.original_file_path))  # FileNameW
-        win32clipboard.CloseClipboard()
+    # def copy_image_to_clipboard(self, _icon, _item):
+    #     # encoded_path = urllib.parse.quote(self.original_file_path, safe="")
+    #     # file_reference = f"file:{encoded_path}"
+    #     # print(f"Copying {file_reference} to the clipboard")
+    #     #
+    #     # pyperclip.copy(file_reference)
+    #
+    #     img = Image.open(self.original_file_path)
+    #     output = io.BytesIO()
+    #     img.convert('RGB').save(output, 'BMP')
+    #     data = output.getvalue()[14:]
+    #     output.close()
+    #
+    #     win32clipboard.OpenClipboard()
+    #     win32clipboard.EmptyClipboard()
+    #     win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, "\0")
+    #     win32clipboard.SetClipboardData(49159, os.path.abspath(self.original_file_path))  # FileNameW
+    #     win32clipboard.CloseClipboard()
 
     def go_to_image_file(self, _icon, _item):
         subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
@@ -369,7 +382,7 @@ class PyWallpaper:
             with Db(table=self.table_name) as db:
                 db.delete_image(path)
             print(f"Moving {path} to {backup_path}")
-            notification = "{os.path.basename(path)} has been deleted."
+            notification = f"{os.path.basename(path)} has been deleted."
             if len(notification) > 64:
                 notification = "..." + notification[-61:]
             self.icon.notify("Deleted wallpaper", notification)
