@@ -112,39 +112,6 @@ class PyWallpaper(wx.Frame):
         self.icon = pystray.Icon("pywallpaper", self.image, "pyWallpaper", self.menu)
 
         # Create GUI
-        # self.add_files_button = tk.Button(
-        #     self.root,
-        #     text="Add Files to Wallpaper List",
-        #     command=self.add_files_to_list
-        # )
-        # self.add_files_button.pack()
-        # self.add_folder_button = tk.Button(
-        #     self.root,
-        #     text="Add Folder to Wallpaper List",
-        #     command=self.add_folder_to_list
-        # )
-        # self.add_folder_button.pack(pady=10)
-        # # self.show_button = tk.Button(self.root, text="Open Wallpaper List", command=self.show_file_list)
-        # # self.show_button.pack()
-        # self.add_filepath_to_images = tk.BooleanVar(
-        #     value=self.config.getboolean("Filepath", "Add filepath to images")
-        # )
-        # self.text_checkbox = tk.Checkbutton(
-        #     self.root,
-        #     text="Add Filepath to Images?",
-        #     variable=self.add_filepath_to_images,
-        #     onvalue=True,
-        #     offvalue=False
-        # )
-        # self.text_checkbox.pack(pady=10)
-
-        # # Intercept window close event
-        # self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
-        #
-        # # Hide main window to start
-        # self.root.withdraw()
-        # create a panel in the frame
-
         p = wx.Panel(self)
 
         self.add_files_button = wx.Button(p, label="Add Files to Wallpaper List")
@@ -154,12 +121,15 @@ class PyWallpaper(wx.Frame):
         self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
         self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
 
-        # and create a sizer to manage the layout of child widgets
+        # Create a sizer to manage the layout of child widgets
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.add_files_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
         sizer.Add(self.add_folder_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
         sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
         p.SetSizer(sizer)
+
+        # Intercept window close event
+        self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
 
     def load_db(self):
         with Db(table=self.table_name) as db:
@@ -180,10 +150,19 @@ class PyWallpaper(wx.Frame):
         if not count:
             print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
                   'button to get started')
-            self.timer.StartOnce(self.delay)
+            wx.CallAfter(self.start_timer, self.delay)
             return
         t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
         t.start()
+
+    def start_timer(self, delay: int):
+        """
+        Runs the timer once, for `delay` seconds. Needed because StartOnce must be called from the main thread, so
+        we invoke this function with `wx.CallAfter()` to make that happen.
+        :param delay:
+        :return:
+        """
+        self.timer.StartOnce(delay)
 
     def set_new_wallpaper(self):
         with Db(table=self.table_name) as db:
@@ -202,7 +181,7 @@ class PyWallpaper(wx.Frame):
         else:
             self.set_desktop_wallpaper(file_path)
             delay = self.delay
-        self.timer.StartOnce(delay)
+        wx.CallAfter(self.start_timer, delay)
         # Spend the idle time after a wallpaper has been set to refresh ephemeral images
         self.refresh_ephemeral_images()
 
@@ -404,15 +383,15 @@ class PyWallpaper(wx.Frame):
 
         self.advance_image(_icon, _item)
 
-    def minimize_to_tray(self):
-        self.root.withdraw()  # Hide the main window
+    def minimize_to_tray(self, _event):
+        self.Hide()  # Hide the main window
 
     def restore_from_tray(self, _icon, _item):
-        self.root.deiconify()  # Restore the main window
+        self.Show()  # Restore the main window
 
-    def on_exit(self, *_args):
+    def on_exit(self, _icon, _item):
         self.icon.stop()  # Remove the system tray icon
-        self.root.destroy()
+        wx.Exit()
 
 
 if __name__ == '__main__':
