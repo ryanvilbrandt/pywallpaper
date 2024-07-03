@@ -126,6 +126,14 @@ class Db:
         """
         return self._fetch_all(sql)
 
+    def get_folder_info(self, dir_path: str) -> Optional[dict]:
+        sql = f"""
+        SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_id 
+        FROM {self.table}
+        WHERE active=1 AND is_directory=1 AND filepath=?;
+        """
+        return self._fetch_one(sql, [dir_path])
+
     def add_images(self, filepaths: Sequence[str], ephemeral: bool = False) -> None:
         sql = f"""
         INSERT INTO {self.table}(filepath, ephemeral)

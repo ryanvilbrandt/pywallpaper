@@ -2,3 +2,4 @@ Pillow
 pystray
 pywin32
 wxPython
+watchdog

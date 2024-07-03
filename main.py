@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 from configparser import ConfigParser
-from typing import Sequence, Union
+from typing import Sequence, Union, Optional
 
 import pystray
 import win32api
@@ -16,6 +16,8 @@ import win32evtlog
 import win32evtlogutil
 import wx
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from database.db import Db
 
@@ -34,7 +36,8 @@ class PyWallpaper(wx.Frame):
     temp_image_filename = None
 
     original_file_path = None
-    timer = None
+    cycle_timer = None
+    observer = None
 
     # GUI Elements
     icon, add_filepath_checkbox = None, None
@@ -146,20 +149,21 @@ class PyWallpaper(wx.Frame):
 
     # Loop functions
     def run(self):
-        self.timer = wx.Timer()
-        self.timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
+        self.cycle_timer = wx.Timer()
+        self.cycle_timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
         self.trigger_image_loop(None)
         self.run_icon_loop()
+        self.run_watchdog()
 
     def trigger_image_loop(self, _event):
-        self.timer.Stop()
+        self.cycle_timer.Stop()
 
         with Db(table=self.table_name) as db:
             count = db.get_all_active_count()
         if not count:
             print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
                   'button to get started')
-            wx.CallAfter(self.timer.StartOnce, self.delay)
+            wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
             return
         t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
         t.start()
@@ -181,9 +185,7 @@ class PyWallpaper(wx.Frame):
         else:
             self.set_desktop_wallpaper(file_path)
             delay = self.delay
-        wx.CallAfter(self.timer.StartOnce, delay)
-        # Spend the idle time after a wallpaper has been set to refresh ephemeral images
-        self.refresh_ephemeral_images()
+        wx.CallAfter(self.cycle_timer.StartOnce, delay)
 
     def make_image(self, file_path: str) -> str:
         # Open image
@@ -262,6 +264,29 @@ class PyWallpaper(wx.Frame):
     def run_icon_loop(self):
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
 
+    def run_watchdog(self):
+        self.observer = Observer()
+        with Db(self.table_name) as db:
+            folders = db.get_active_folders()
+            for folder in folders:
+                self.add_observer_schedule(
+                    folder["filepath"],
+                    folder["include_subdirectories"],
+                    folder["eagle_folder_id"],
+                )
+        self.observer.start()
+
+    def add_observer_schedule(self, dir_path: str, include_subfolders: bool = False,
+                              eagle_folder_id: Optional[str] = None):
+        is_eagle = eagle_folder_id is not None
+        event_handler = MyEventHandler(self, dir_path, is_eagle, eagle_folder_id)
+        self.observer.schedule(
+            event_handler,
+            dir_path,
+            recursive=include_subfolders or is_eagle
+        )
+        print("Scheduled watchdog for folder {}".format(dir_path))
+
     # GUI Functions
     def add_files_to_list(self, _event):
         with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
@@ -287,12 +312,14 @@ class PyWallpaper(wx.Frame):
             if answer == wx.ID_CANCEL:
                 return
             include_subfolders = answer == wx.ID_YES
+        dir_path = dir_path.replace("\\", "/")
         with Db(table=self.table_name) as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_directory(dir_path, include_subfolders)
             file_paths = self.get_file_list_in_folder(dir_path, include_subfolders)
             db.add_images(file_paths, ephemeral=True)
+        self.add_observer_schedule(dir_path, include_subfolders=include_subfolders)
         if advance_image_after_load:
             self.trigger_image_loop(None)
 
@@ -328,12 +355,14 @@ class PyWallpaper(wx.Frame):
                 return
         folder_name = choice_dialog.GetStringSelection()
         folder_id = image_folders[folder_name]
+        dir_path = dir_path.replace("\\", "/")
         with Db(table=self.table_name) as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_eagle_folder(dir_path, folder_name, folder_id)
             file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_id)
             db.add_images(file_paths, ephemeral=True)
+        self.add_observer_schedule(dir_path, eagle_folder_id=folder_id)
         if advance_image_after_load:
             self.trigger_image_loop(None)
 
@@ -355,7 +384,7 @@ class PyWallpaper(wx.Frame):
         return file_paths
 
     @staticmethod
-    def get_file_list_in_eagle_folder(dir_path: str, folder_id: int):
+    def get_file_list_in_eagle_folder(dir_path: str, folder_id: str):
         file_list = []
         for dir_path, dir_names, filenames in os.walk(os.path.join(dir_path, "images")):
             if "metadata.json" not in filenames:
@@ -369,35 +398,8 @@ class PyWallpaper(wx.Frame):
                     continue
                 if len(filenames) > 2 and filename.endswith("_thumbnail.png"):
                     continue
-                file_list.append(os.path.join(dir_path, filename))
+                file_list.append(os.path.join(dir_path, filename).replace("\\", "/"))
         return file_list
-
-    def refresh_ephemeral_images(self):
-        """
-        Refresh images loaded as part of an included folder. We aren't removing old images because we want to keep
-        track of the per-image `active` flag, even for ephemeral images.
-        """
-        t1 = time.perf_counter_ns()
-        images_updated = 0
-        with Db(self.table_name) as db:
-            folder_list = db.get_active_folders()
-            file_paths = []
-            for folder in folder_list:
-                if folder["is_eagle_directory"]:
-                    file_paths += self.get_file_list_in_eagle_folder(
-                        folder["filepath"],
-                        folder["eagle_folder_id"],
-                    )
-                else:
-                    file_paths += self.get_file_list_in_folder(
-                        folder["filepath"],
-                        folder["include_subdirectories"],
-                    )
-            if file_paths:
-                db.add_images(file_paths, ephemeral=True)
-                images_updated += len(file_paths)
-        t2 = time.perf_counter_ns()
-        print(f"{images_updated} ephemeral images were found in {(t2 - t1) / 1000:,} μs")
 
     def advance_image(self, _icon, _item):
         self.trigger_image_loop(None)
@@ -460,7 +462,63 @@ class PyWallpaper(wx.Frame):
 
     def on_exit(self, *args):
         self.icon.stop()  # Remove the system tray icon
+        self.observer.stop()
         wx.Exit()
+
+
+class MyEventHandler(FileSystemEventHandler):
+
+    def __init__(self, parent: PyWallpaper, dir_path: str, eagle_mode: bool = False,
+                 eagle_folder_id: Optional[str] = None):
+        super().__init__()
+        self.parent = parent
+        self.dir_path = dir_path
+        self.eagle_mode = eagle_mode
+        self.eagle_folder_id = eagle_folder_id
+        self.eagle_timer = None
+        self.debounce_time = 3  # seconds
+
+    def on_created(self, event):
+        if event.is_directory or event.src_path.endswith("@SynoEAStream"):
+            return
+        print(f"File created: {event.src_path}")
+        self.add_file(event.src_path)
+
+    def on_modified(self, event):
+        if event.is_directory or event.src_path.endswith("@SynoEAStream"):
+            return
+        print(f"File modified: {event.src_path}")
+        self.add_file(event.src_path)
+
+    def add_file(self, file_path: str):
+        file_path = file_path.replace("\\", "/")
+        if self.eagle_mode:
+            # If an Eagle timer is added or modified, we need to rescan the whole Eagle directory
+            # Because of this, we need to wait for all the file events to finish coming in,
+            # and only run the update once.
+            # TODO update this to only rescan the affected folder
+            if self.eagle_timer:
+                self.eagle_timer.cancel()
+            self.eagle_timer = threading.Timer(self.debounce_time, self.add_eagle_file, args=[file_path])
+            self.eagle_timer.start()
+            return
+        with Db(table=self.parent.table_name) as db:
+            db.add_images([file_path], ephemeral=True)
+
+    def add_eagle_file(self, file_path: str):
+        print(f"Adding {file_path} to eagle mode. "
+              f"dir_path={self.dir_path} eagle_folder_id={self.eagle_folder_id}")
+        file_list = self.parent.get_file_list_in_eagle_folder(self.dir_path, self.eagle_folder_id)
+        with Db(table=self.parent.table_name) as db:
+            db.add_images(file_list, ephemeral=True)
+
+    def on_deleted(self, event):
+        if event.is_directory or event.src_path.endswith("@SynoEAStream"):
+            return
+        print(f"File deleted: {event.src_path}")
+        file_path = event.src_path.replace("\\", "/")
+        with Db(table=self.parent.table_name) as db:
+            db.delete_image(file_path)
 
 
 if __name__ == '__main__':
