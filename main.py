@@ -32,12 +32,11 @@ class PyWallpaper(wx.Frame):
     temp_image_filename = None
 
     original_file_path = None
-    timer_id = None
-    add_filepath_to_images = None
+    timer = None
 
     # GUI Elements
-    root, image, menu, icon = None, None, None, None
-    add_files_button, add_folder_button, text_checkbox = None, None, None
+    image, menu, icon = None, None, None
+    add_files_button, add_folder_button, add_filepath_checkbox = None, None, None
 
     def __init__(self):
         super().__init__(None, title="pyWallpaper")
@@ -152,14 +151,14 @@ class PyWallpaper(wx.Frame):
         self.add_files_button.Bind(wx.EVT_BUTTON, self.add_files_to_list)
         self.add_folder_button = wx.Button(p, label="Add Folder to Wallpaper List")
         self.add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
-        self.delete_button = wx.Button(p, label="Delete")
-        self.delete_button.Bind(wx.EVT_BUTTON, self.delete_image)
+        self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
+        self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
 
         # and create a sizer to manage the layout of child widgets
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.add_files_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
         sizer.Add(self.add_folder_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
-        sizer.Add(self.delete_button, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
+        sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP | wx.LEFT, 25))
         p.SetSizer(sizer)
 
     def load_db(self):
@@ -168,20 +167,20 @@ class PyWallpaper(wx.Frame):
 
     # Loop functions
     def run(self):
+        self.timer = wx.Timer()
+        self.timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
         self.trigger_image_loop()
         self.run_icon_loop()
-        self.root.mainloop()
 
     def trigger_image_loop(self):
-        if self.timer_id:
-            self.root.after_cancel(self.timer_id)
+        self.timer.Stop()
 
         with Db(table=self.table_name) as db:
             count = db.get_all_active_count()
         if not count:
             print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
                   'button to get started')
-            self.timer_id = self.root.after(self.delay, self.trigger_image_loop)
+            self.timer.StartOnce(self.delay)
             return
         t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
         t.start()
@@ -203,7 +202,7 @@ class PyWallpaper(wx.Frame):
         else:
             self.set_desktop_wallpaper(file_path)
             delay = self.delay
-        self.timer_id = self.root.after(delay, self.trigger_image_loop)
+        self.timer.StartOnce(delay)
         # Spend the idle time after a wallpaper has been set to refresh ephemeral images
         self.refresh_ephemeral_images()
 
@@ -213,7 +212,7 @@ class PyWallpaper(wx.Frame):
         # Resize and apply to background
         img = self.resize_image_to_bg(img)
         # Add text
-        if self.add_filepath_to_images.get():
+        if self.add_filepath_checkbox.IsChecked():
             self.add_text_to_image(img, file_path)
         # Write to temp file
         ext = os.path.splitext(file_path)[1]
@@ -286,7 +285,7 @@ class PyWallpaper(wx.Frame):
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
 
     # GUI Functions
-    def add_files_to_list(self, event):
+    def add_files_to_list(self, _event):
         with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE) as fileDialog:
             if fileDialog.ShowModal() == wx.ID_CANCEL:
@@ -299,7 +298,7 @@ class PyWallpaper(wx.Frame):
         if advance_image_after_load:
             self.trigger_image_loop()
 
-    def add_folder_to_list(self, event):
+    def add_folder_to_list(self, _event):
         with wx.DirDialog(self, "Select Image Folder", style=wx.DD_DIR_MUST_EXIST) as dirDialog:
             if dirDialog.ShowModal() == wx.ID_CANCEL:
                 return
@@ -385,15 +384,13 @@ class PyWallpaper(wx.Frame):
             db.set_image_to_inactive(self.original_file_path)
         self.advance_image(_icon, _item)
 
-    def delete_image(self, _event):
+    def delete_image(self, _icon, _item):
         path = self.original_file_path
         title, message = "Delete image?", f"Are you sure you want to delete {path}"
         with wx.MessageDialog(self, message, title, style=wx.ICON_WARNING | wx.YES_NO) as messageDialog:
             answer = messageDialog.ShowModal()
             if answer == wx.ID_NO:
                 return
-        print("KILL IT!")
-        return
         ext = os.path.splitext(path)[1]
         backup_path = self.config.get("Advanced", "Deleted image path") + ext
         shutil.move(path, backup_path)
@@ -422,6 +419,7 @@ if __name__ == '__main__':
     # When this module is run (not imported) then create the app, the
     # frame, show it, and start the event loop.
     app = wx.App()
-    frm = PyWallpaper()
-    frm.Show()
+    pyw = PyWallpaper()
+    pyw.run()
+    pyw.Show()
     app.MainLoop()
