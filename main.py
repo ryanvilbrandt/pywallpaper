@@ -142,10 +142,10 @@ class PyWallpaper(wx.Frame):
     def run(self):
         self.timer = wx.Timer()
         self.timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
-        self.trigger_image_loop()
+        self.trigger_image_loop(None)
         self.run_icon_loop()
 
-    def trigger_image_loop(self):
+    def trigger_image_loop(self, _event):
         self.timer.Stop()
 
         with Db(table=self.table_name) as db:
@@ -325,7 +325,7 @@ class PyWallpaper(wx.Frame):
         print(f"{images_updated} ephemeral images were found in {(t2 - t1) / 1000:,} μs")
 
     def advance_image(self, _icon, _item):
-        self.trigger_image_loop()
+        self.trigger_image_loop(None)
 
     def open_image_file(self, _icon, _item):
         subprocess.run(["cmd", "/c", "start", "", os.path.abspath(self.original_file_path)])
