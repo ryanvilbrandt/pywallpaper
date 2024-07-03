@@ -19,6 +19,7 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from database.db import Db
 
 # Global variables
+VERSION = "0.2.0"
 SPI_SET_DESKTOP_WALLPAPER = 20
 
 
@@ -39,7 +40,7 @@ class PyWallpaper(wx.Frame):
     add_files_button, add_folder_button, add_filepath_checkbox = None, None, None
 
     def __init__(self):
-        super().__init__(None, title="pyWallpaper")
+        super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.load_config()
         self.load_gui()
         self.load_db()
