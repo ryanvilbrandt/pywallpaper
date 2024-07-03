@@ -152,19 +152,10 @@ class PyWallpaper(wx.Frame):
         if not count:
             print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
                   'button to get started')
-            wx.CallAfter(self.start_timer, self.delay)
+            wx.CallAfter(self.timer.StartOnce, self.delay)
             return
         t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
         t.start()
-
-    def start_timer(self, delay: int):
-        """
-        Runs the timer once, for `delay` seconds. Needed because StartOnce must be called from the main thread, so
-        we invoke this function with `wx.CallAfter()` to make that happen.
-        :param delay:
-        :return:
-        """
-        self.timer.StartOnce(delay)
 
     def set_new_wallpaper(self):
         with Db(table=self.table_name) as db:
@@ -183,7 +174,7 @@ class PyWallpaper(wx.Frame):
         else:
             self.set_desktop_wallpaper(file_path)
             delay = self.delay
-        wx.CallAfter(self.start_timer, delay)
+        wx.CallAfter(self.timer.StartOnce, delay)
         # Spend the idle time after a wallpaper has been set to refresh ephemeral images
         self.refresh_ephemeral_images()
 
