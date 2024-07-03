@@ -12,14 +12,14 @@ class Db:
     auto_close = False
     ids = None
 
-    def __init__(self, table="images", filename="database/main.db"):
+    def __init__(self, table="images", filename="database/main.db", auto_commit=True, auto_close=True):
         self.table = table
         self.conn = sqlite3.connect(filename)
         self.cur = self.conn.cursor()
+        self.auto_commit = auto_commit
+        self.auto_close = auto_close
 
-    def __enter__(self, auto_commit=True, auto_close=True):
-        self.auto_commit = True
-        self.auto_close = True
+    def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

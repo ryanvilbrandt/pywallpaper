@@ -94,8 +94,6 @@ class PyWallpaper(wx.Frame):
         return seconds
 
     def load_gui(self):
-        # self.root.wm_minsize(width=200, height=100)
-
         # Create a system tray icon
         self.image = Image.open(self.config.get("Advanced", "Icon path"))
         self.menu = (
@@ -130,6 +128,10 @@ class PyWallpaper(wx.Frame):
 
         # Intercept window close event
         self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
+
+        # Set window size
+        self.SetSize((300, 200))
+        self.SetMinSize((300, 200))
 
     def load_db(self):
         with Db(table=self.table_name) as db:
