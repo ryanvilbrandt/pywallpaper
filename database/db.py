@@ -75,7 +75,10 @@ class Db:
             active BOOLEAN DEFAULT TRUE,
             is_directory BOOLEAN DEFAULT FALSE,
             include_subdirectories BOOLEAN DEFAULT FALSE,
-            ephemeral BOOLEAN DEFAULT FALSE
+            ephemeral BOOLEAN DEFAULT FALSE,
+            is_eagle_directory BOOLEAN DEFAULT FALSE,
+            eagle_folder_name TEXT DEFAULT NULL,
+            eagle_folder_id TEXT DEFAULT NULL
         );"""
         self.cur.execute(sql)
 
@@ -118,7 +121,8 @@ class Db:
 
     def get_active_folders(self) -> Iterator[dict]:
         sql = f"""
-        SELECT filepath, include_subdirectories FROM {self.table} WHERE active=1 AND is_directory=1;
+        SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_id 
+        FROM {self.table} WHERE active=1 AND is_directory=1;
         """
         return self._fetch_all(sql)
 
@@ -137,6 +141,14 @@ class Db:
         ON CONFLICT (filepath) DO NOTHING;
         """
         self.cur.execute(sql, [dir_path, True, include_subdirectories])
+
+    def add_eagle_folder(self, eagle_library_path: str, eagle_folder_name: str, eagle_folder_id: str) -> None:
+        sql = f"""
+        INSERT INTO {self.table}(filepath, is_directory, is_eagle_directory, eagle_folder_name, eagle_folder_id)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (filepath) DO NOTHING;
+        """
+        self.cur.execute(sql, [eagle_library_path, True, True, eagle_folder_name, eagle_folder_id])
 
     def remove_ephemeral_images(self):
         sql = """
