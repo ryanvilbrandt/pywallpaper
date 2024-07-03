@@ -8,10 +8,12 @@ import sys
 import threading
 import time
 from configparser import ConfigParser
+from io import BytesIO
 from typing import Sequence, Union, Optional
 
 import pystray
 import win32api
+import win32clipboard
 import win32evtlog
 import win32evtlogutil
 import wx
@@ -103,7 +105,7 @@ class PyWallpaper(wx.Frame):
         menu = (
             pystray.MenuItem("Advance Image", self.advance_image, default=True),
             pystray.MenuItem("Open Image File", self.open_image_file),
-            # pystray.MenuItem("Copy Image to Clipboard", self.copy_image_to_clipboard),
+            pystray.MenuItem("Copy Image to Clipboard", self.copy_image_to_clipboard),
             pystray.MenuItem("Go to Image File in Explorer", self.go_to_image_file),
             pystray.MenuItem("Remove Image", self.remove_image_from_file_list),
             pystray.MenuItem("Delete Image", self.delete_image),
@@ -407,24 +409,20 @@ class PyWallpaper(wx.Frame):
     def open_image_file(self, _icon, _item):
         subprocess.run(["cmd", "/c", "start", "", os.path.abspath(self.original_file_path)])
 
-    # def copy_image_to_clipboard(self, _icon, _item):
-    #     # encoded_path = urllib.parse.quote(self.original_file_path, safe="")
-    #     # file_reference = f"file:{encoded_path}"
-    #     # print(f"Copying {file_reference} to the clipboard")
-    #     #
-    #     # pyperclip.copy(file_reference)
-    #
-    #     img = Image.open(self.original_file_path)
-    #     output = io.BytesIO()
-    #     img.convert('RGB').save(output, 'BMP')
-    #     data = output.getvalue()[14:]
-    #     output.close()
-    #
-    #     win32clipboard.OpenClipboard()
-    #     win32clipboard.EmptyClipboard()
-    #     win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, "\0")
-    #     win32clipboard.SetClipboardData(49159, os.path.abspath(self.original_file_path))  # FileNameW
-    #     win32clipboard.CloseClipboard()
+    def copy_image_to_clipboard(self, _icon, _item):
+        img = Image.open(self.original_file_path)
+
+        # Convert the image to a format suitable for the clipboard (DIB)
+        output = BytesIO()
+        img.convert("RGB").save(output, "BMP")
+        data = output.getvalue()[14:]
+        output.close()
+
+        # Open the clipboard and set the image data
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+        win32clipboard.CloseClipboard()
 
     def go_to_image_file(self, _icon, _item):
         subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
