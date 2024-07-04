@@ -189,7 +189,10 @@ class PyWallpaper(wx.Frame):
         except OSError:
             print(f"Failed to process image file: {self.original_file_path!r}", file=sys.stderr)
         else:
+            t1a = time.perf_counter_ns()
             self.set_desktop_wallpaper(file_path)
+            t2a = time.perf_counter_ns()
+            print(f"Time to apply image to desktop: {(t2a - t1a) / 1000:,} us")
             delay = self.delay
         t2 = time.perf_counter_ns()
         print(f"Time to load new image: {(t2 - t1) / 1000:,} us")
