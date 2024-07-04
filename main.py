@@ -179,6 +179,7 @@ class PyWallpaper(wx.Frame):
             self.original_file_path = db.get_random_image()
             t2 = time.perf_counter_ns()
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
+        t1 = time.perf_counter_ns()
         print(f"Loading {self.original_file_path}")
         delay = self.error_delay
         try:
@@ -190,6 +191,8 @@ class PyWallpaper(wx.Frame):
         else:
             self.set_desktop_wallpaper(file_path)
             delay = self.delay
+        t2 = time.perf_counter_ns()
+        print(f"Time to load new image: {(t2 - t1) / 1000:,} us")
         wx.CallAfter(self.cycle_timer.StartOnce, delay)
 
     def make_image(self, file_path: str) -> str:
