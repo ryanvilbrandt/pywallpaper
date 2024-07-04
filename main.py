@@ -26,7 +26,7 @@ from watchdog.observers import Observer
 from database.db import Db
 
 # Global variables
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 SPI_SET_DESKTOP_WALLPAPER = 20
 
 
