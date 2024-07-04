@@ -21,3 +21,4 @@ Stroke fill = black
 Temp image filename = wallpaper
 Deleted image path = deleted_wallpaper
 Icon path = icon.webp
+Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg

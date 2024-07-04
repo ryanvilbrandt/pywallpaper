@@ -166,8 +166,10 @@ class PyWallpaper(wx.Frame):
         with Db(table=self.table_name) as db:
             count = db.get_all_active_count()
         if not count:
-            print('No images have been loaded. Open the GUI and click the "Add Files to Wallpaper List" '
-                  'button to get started')
+            self.Show()
+            msg = 'No images have been loaded. Click the "Add Files to Wallpaper List" button to get started.'
+            with wx.MessageDialog(self, msg, "Empty wallpaper list") as dialog:
+                dialog.ShowModal()
             wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
             return
         t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
@@ -386,16 +388,19 @@ class PyWallpaper(wx.Frame):
                               style=wx.OK | wx.ICON_ERROR) as dialog:
             dialog.ShowModal()
 
-    @staticmethod
-    def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence[str]:
+    def get_file_list_in_folder(self, dir_path: str, include_subfolders: bool) -> Sequence[str]:
         file_paths = []
+        allowed_extensions = ["." + f.strip(" ").strip(".")
+                              for f in self.config.get("Advanced", "Image types").lower().split(",")]
         for dir_path, dir_names, filenames in os.walk(dir_path):
             # If we don't want to include subfolders, clearing the `dir_names` list will stop os.walk() at the
             # top-level directory.
             if not include_subfolders:
                 dir_names.clear()
             for filename in filenames:
-                file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in allowed_extensions:
+                    file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
         return file_paths
 
     def get_file_list_in_eagle_folder(self, dir_path: str, folder_id: str) -> Sequence[str]:
