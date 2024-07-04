@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from configparser import ConfigParser
+from glob import glob
 from io import BytesIO
 from json import JSONDecodeError
 from typing import Sequence, Union, Optional
@@ -360,11 +361,15 @@ class PyWallpaper(wx.Frame):
         folder_name = choice_dialog.GetStringSelection()
         folder_id = image_folders[folder_name]
         dir_path = dir_path.replace("\\", "/")
+
         with Db(table=self.table_name) as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_eagle_folder(dir_path, folder_name, folder_id)
-            file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_id, show_progress_bar=True)
+        file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_id)
+        if not file_paths:
+            return
+        with Db(table=self.table_name) as db:
             db.add_images(file_paths, ephemeral=True)
         self.add_observer_schedule(dir_path, eagle_folder_id=folder_id)
         if advance_image_after_load:
@@ -387,45 +392,55 @@ class PyWallpaper(wx.Frame):
                 file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
         return file_paths
 
-    @staticmethod
-    def get_file_list_in_eagle_folder(dir_path: str, folder_id: str, show_progress_bar: bool = False) -> Sequence[str]:
-        file_list = []
-        folders_processed = 0
-        if show_progress_bar:
-            progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...")
-            progress_bar.Pulse()
-        else:
-            progress_bar = None
-        for dir_path, dir_names, filenames in os.walk(os.path.join(dir_path, "images")):
-            # Get total number of image folders inside the `images` directory
-            if show_progress_bar and dir_path.endswith("images"):
-                progress_bar.SetRange(len(dir_names))
-            # Skip folders without a metadata.json
-            if "metadata.json" not in filenames:
+    def get_file_list_in_eagle_folder(self, dir_path: str, folder_id: str) -> Sequence[str]:
+        self.processing_eagle = True
+        progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...", style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
+        try:
+            file_list = []
+            folder_list = glob(os.path.join(dir_path, "images/*"))
+            total_folders = len(folder_list)
+            progress_bar.SetRange(total_folders)
+            progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
+            for i, folder_path in enumerate(folder_list):
+                file_path = self.parse_eagle_folder(folder_path, folder_id, ignore_lock=True)
+                if file_path is not None:
+                    file_list.append(file_path)
+                pb_status = progress_bar.Update(i + 1, newmsg=f"Scanning image folders... ({i + 1}/{total_folders})")
+                # If user clicked Abort, return early
+                if not pb_status[0]:
+                    return []
+            return file_list
+        finally:
+            progress_bar.Close()
+            self.processing_eagle = False
+
+    def parse_eagle_folder(self, dir_path: str, folder_id: str, ignore_lock: bool = False) -> Optional[str]:
+        if self.processing_eagle and not ignore_lock:
+            return None
+        file_list = glob(os.path.join(dir_path, "*.*"))
+        if os.path.join(dir_path, "metadata.json") not in file_list:
+            print(f"No metadata.json file found in {dir_path}", file=sys.stderr)
+            print(file_list, file=sys.stderr)
+            return None
+        try:
+            with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
+                metadata = json.load(f)
+        except JSONDecodeError as e:
+            print(f"Error when decoding {os.path.join(dir_path, 'metadata.json')}", file=sys.stderr)
+            print(e, file=sys.stderr)
+            return None
+        # Skip if it's not a folder_id we care about
+        if folder_id not in metadata["folders"]:
+            return None
+        print(f"Loading image from {dir_path}...")
+        for file_path in file_list:
+            if file_path.endswith("metadata.json"):
                 continue
-            print(dir_path)
-            # Load metadata.json
-            try:
-                with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
-                    metadata = json.load(f)
-                # Skip if it's not a folder_id we care about
-                if folder_id not in metadata["folders"]:
-                    continue
-                print("Loading file...")
-                for filename in filenames:
-                    if filename == "metadata.json":
-                        continue
-                    if len(filenames) > 2 and filename.endswith("_thumbnail.png"):
-                        continue
-                    file_list.append(os.path.join(dir_path, filename).replace("\\", "/"))
-            except JSONDecodeError as e:
-                print(f"Error when decoding {os.path.join(dir_path, 'metadata.json')}", file=sys.stderr)
-                print(e, file=sys.stderr)
-            finally:
-                folders_processed += 1
-                if show_progress_bar:
-                    progress_bar.Update(folders_processed)
-        return file_list
+            if len(file_list) > 2 and file_path.endswith("_thumbnail.png"):
+                continue
+            return file_path.replace("\\", "/")
+        print(f"No non-thumbnail image found in {dir_path}", file=sys.stderr)
+        return None
 
     def advance_image(self, _icon, _item):
         self.trigger_image_loop(None)
@@ -499,7 +514,6 @@ class MyEventHandler(FileSystemEventHandler):
         self.eagle_folder_id = eagle_folder_id
         self.eagle_timer = None
         self.debounce_time = 3  # seconds
-        self.processing_eagle = False
 
     def on_created(self, event):
         if event.is_directory or event.src_path.endswith("@SynoEAStream"):
@@ -508,6 +522,7 @@ class MyEventHandler(FileSystemEventHandler):
         self.add_file(event.src_path)
 
     def on_modified(self, event):
+        # TODO Add way to remove eagle files if the folder_id in metadata.json is changed.
         if event.is_directory or event.src_path.endswith("@SynoEAStream"):
             return
         print(f"File modified: {event.src_path}")
@@ -516,30 +531,13 @@ class MyEventHandler(FileSystemEventHandler):
     def add_file(self, file_path: str):
         file_path = file_path.replace("\\", "/")
         if self.eagle_mode:
-            # If an Eagle timer is added or modified, we need to rescan the whole Eagle directory
-            # Because of this, we need to wait for all the file events to finish coming in,
-            # and only run the update once.
-            # TODO update this to only rescan the affected folder
-            if self.eagle_timer:
-                self.eagle_timer.cancel()
-            self.eagle_timer = threading.Timer(self.debounce_time, self.add_eagle_file, args=[file_path])
-            self.eagle_timer.start()
-            return
+            print(f"Adding '{file_path}' in Eagle mode. eagle_folder_id={self.eagle_folder_id}")
+            base_dir = os.path.dirname(file_path)
+            file_path = self.parent.parse_eagle_folder(base_dir, self.eagle_folder_id)
+            if file_path is None:
+                return
         with Db(table=self.parent.table_name) as db:
             db.add_images([file_path], ephemeral=True)
-
-    def add_eagle_file(self, file_path: str):
-        if self.processing_eagle:
-            return
-        self.processing_eagle = True
-        try:
-            print(f"Adding {file_path} to eagle mode. "
-                  f"dir_path={self.dir_path} eagle_folder_id={self.eagle_folder_id}")
-            file_list = self.parent.get_file_list_in_eagle_folder(self.dir_path, self.eagle_folder_id)
-            with Db(table=self.parent.table_name) as db:
-                db.add_images(file_list, ephemeral=True)
-        finally:
-            self.processing_eagle = False
 
     def on_deleted(self, event):
         if event.is_directory or event.src_path.endswith("@SynoEAStream"):
