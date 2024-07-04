@@ -338,7 +338,7 @@ class PyWallpaper(wx.Frame):
             )
             return
         # Get all images from metadata.json, falling recursively through child folders.
-        with open(os.path.join(dir_path, "metadata.json")) as f:
+        with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
             metadata = json.load(f)
         image_folders = {}
 
@@ -391,7 +391,7 @@ class PyWallpaper(wx.Frame):
         for dir_path, dir_names, filenames in os.walk(os.path.join(dir_path, "images")):
             if "metadata.json" not in filenames:
                 continue
-            with open(os.path.join(dir_path, "metadata.json"), "r") as f:
+            with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
                 metadata = json.load(f)
             if folder_id not in metadata["folders"]:
                 continue
