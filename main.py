@@ -453,8 +453,13 @@ class PyWallpaper(wx.Frame):
             print(e, file=sys.stderr)
             return None
         # Skip if it's not a folder_id we care about
-        if not set(folder_ids).intersection(metadata["folders"]):
-            return None
+        try:
+            if not set(folder_ids).intersection(metadata["folders"]):
+                return None
+        except TypeError as e:
+            print(folder_ids, file=sys.stderr)
+            print(metadata["folders"], file=sys.stderr)
+            raise
         print(f"Loading image from {dir_path}...")
         for file_path in file_list:
             if file_path.endswith("metadata.json"):
