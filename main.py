@@ -25,8 +25,7 @@ from watchdog.observers import Observer
 
 from database.db import Db
 
-# Global variables
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 SPI_SET_DESKTOP_WALLPAPER = 20
 
 
@@ -41,7 +40,7 @@ class PyWallpaper(wx.Frame):
 
     original_file_path = None
     cycle_timer = None
-    observer = None
+    observer, event_handlers = None, {}
     processing_eagle = None
 
     # GUI Elements
@@ -282,17 +281,29 @@ class PyWallpaper(wx.Frame):
         with Db(self.table_name) as db:
             folders = db.get_active_folders()
             for folder in folders:
+                eagle_folder_ids = None
+                if folder["eagle_folder_data"] is not None:
+                    eagle_folder_ids = list(json.loads(folder["eagle_folder_data"]).values())
                 self.add_observer_schedule(
                     folder["filepath"],
                     folder["include_subdirectories"],
-                    folder["eagle_folder_id"],
+                    eagle_folder_ids,
                 )
         self.observer.start()
 
     def add_observer_schedule(self, dir_path: str, include_subfolders: bool = False,
-                              eagle_folder_id: Optional[str] = None):
-        is_eagle = eagle_folder_id is not None
-        event_handler = MyEventHandler(self, dir_path, is_eagle, eagle_folder_id)
+                              eagle_folder_ids: Optional[list[str]] = None):
+        is_eagle = eagle_folder_ids is not None
+        if dir_path not in self.event_handlers:
+            event_handler = MyEventHandler(self, dir_path, is_eagle, eagle_folder_ids)
+            self.event_handlers[dir_path] = event_handler
+        elif is_eagle:
+            event_handler = self.event_handlers[dir_path]
+            event_handler.eagle_folder_ids = eagle_folder_ids
+        else:
+            return
+        print(len(self.event_handlers))
+
         self.observer.schedule(
             event_handler,
             dir_path,
@@ -361,26 +372,27 @@ class PyWallpaper(wx.Frame):
         add_to_image_folder_dict(metadata["folders"])
 
         # Prompt the user to pick a folder name
-        with wx.SingleChoiceDialog(self, "Pick Folder to add to Wallpaper List", "Folders:",
-                                   choices=list(image_folders.keys()),
-                                   style=wx.RESIZE_BORDER | wx.ALIGN_CENTER | wx.OK | wx.CANCEL) as choice_dialog:
+        folder_names, folder_ids = zip(*image_folders.items())
+        with wx.MultiChoiceDialog(self, "Pick Folders to add to Wallpaper List", "Folders:",
+                                   choices=folder_names) as choice_dialog:
             if choice_dialog.ShowModal() == wx.ID_CANCEL:
                 return
-        folder_name = choice_dialog.GetStringSelection()
-        folder_id = image_folders[folder_name]
+        folder_data = {folder_names[i]: folder_ids[i] for i in choice_dialog.GetSelections()}
         dir_path = dir_path.replace("\\", "/")
 
         with Db(table=self.table_name) as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
-            db.add_eagle_folder(dir_path, folder_name, folder_id)
-        file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_id)
-        if not file_paths:
-            return
-        with Db(table=self.table_name) as db:
-            db.add_images(file_paths, ephemeral=True)
-        self.add_observer_schedule(dir_path, eagle_folder_id=folder_id)
-        if advance_image_after_load:
+            # Add folder data to existing folder data, and return the combined data
+            folder_data = db.add_eagle_folder(dir_path, folder_data)
+            db.remove_ephemeral_images_in_folder(dir_path)
+        folder_ids = list(folder_data.values())
+        file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_ids)
+        if file_paths:
+            with Db(table=self.table_name) as db:
+                db.add_images(file_paths, ephemeral=True)
+        self.add_observer_schedule(dir_path, eagle_folder_ids=folder_ids)
+        if file_paths and advance_image_after_load:
             self.trigger_image_loop(None)
 
     def error_dialog(self, message: str, title: str = None):
@@ -403,7 +415,7 @@ class PyWallpaper(wx.Frame):
                     file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
         return file_paths
 
-    def get_file_list_in_eagle_folder(self, dir_path: str, folder_id: str) -> Sequence[str]:
+    def get_file_list_in_eagle_folder(self, dir_path: str, folder_ids: list[str]) -> Sequence[str]:
         self.processing_eagle = True
         progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...", style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
         try:
@@ -413,7 +425,7 @@ class PyWallpaper(wx.Frame):
             progress_bar.SetRange(total_folders)
             progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
             for i, folder_path in enumerate(folder_list):
-                file_path = self.parse_eagle_folder(folder_path, folder_id, ignore_lock=True)
+                file_path = self.parse_eagle_folder(folder_path, folder_ids, ignore_lock=True)
                 if file_path is not None:
                     file_list.append(file_path)
                 pb_status = progress_bar.Update(i + 1, newmsg=f"Scanning image folders... ({i + 1}/{total_folders})")
@@ -425,7 +437,7 @@ class PyWallpaper(wx.Frame):
             progress_bar.Close()
             self.processing_eagle = False
 
-    def parse_eagle_folder(self, dir_path: str, folder_id: str, ignore_lock: bool = False) -> Optional[str]:
+    def parse_eagle_folder(self, dir_path: str, folder_ids: list[str], ignore_lock: bool = False) -> Optional[str]:
         if self.processing_eagle and not ignore_lock:
             return None
         file_list = glob(os.path.join(dir_path, "*.*"))
@@ -441,7 +453,7 @@ class PyWallpaper(wx.Frame):
             print(e, file=sys.stderr)
             return None
         # Skip if it's not a folder_id we care about
-        if folder_id not in metadata["folders"]:
+        if not set(folder_ids).intersection(metadata["folders"]):
             return None
         print(f"Loading image from {dir_path}...")
         for file_path in file_list:
@@ -517,12 +529,12 @@ class PyWallpaper(wx.Frame):
 class MyEventHandler(FileSystemEventHandler):
 
     def __init__(self, parent: PyWallpaper, dir_path: str, eagle_mode: bool = False,
-                 eagle_folder_id: Optional[str] = None):
+                 eagle_folder_ids: Optional[list[str]] = None):
         super().__init__()
         self.parent = parent
         self.dir_path = dir_path
         self.eagle_mode = eagle_mode
-        self.eagle_folder_id = eagle_folder_id
+        self.eagle_folder_ids = eagle_folder_ids
         self.eagle_timer = None
         self.debounce_time = 3  # seconds
 
@@ -542,9 +554,9 @@ class MyEventHandler(FileSystemEventHandler):
     def add_file(self, file_path: str):
         file_path = file_path.replace("\\", "/")
         if self.eagle_mode:
-            print(f"Adding '{file_path}' in Eagle mode. eagle_folder_id={self.eagle_folder_id}")
+            print(f"Adding '{file_path}' in Eagle mode. eagle_folder_ids={self.eagle_folder_ids}")
             base_dir = os.path.dirname(file_path)
-            file_path = self.parent.parse_eagle_folder(base_dir, self.eagle_folder_id)
+            file_path = self.parent.parse_eagle_folder(base_dir, self.eagle_folder_ids)
             if file_path is None:
                 return
         with Db(table=self.parent.table_name) as db:

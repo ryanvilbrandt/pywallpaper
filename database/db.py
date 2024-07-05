@@ -1,4 +1,4 @@
-import os.path
+import json
 import sqlite3
 from collections import OrderedDict
 from random import choice
@@ -77,8 +77,7 @@ class Db:
             include_subdirectories BOOLEAN DEFAULT FALSE,
             ephemeral BOOLEAN DEFAULT FALSE,
             is_eagle_directory BOOLEAN DEFAULT FALSE,
-            eagle_folder_name TEXT DEFAULT NULL,
-            eagle_folder_id TEXT DEFAULT NULL
+            eagle_folder_data TEXT DEFAULT NULL
         );"""
         self.cur.execute(sql)
 
@@ -121,20 +120,20 @@ class Db:
 
     def get_active_folders(self) -> Iterator[dict]:
         sql = f"""
-        SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_id 
+        SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_data 
         FROM {self.table} WHERE active=1 AND is_directory=1;
         """
         return self._fetch_all(sql)
 
     def get_folder_info(self, dir_path: str) -> Optional[dict]:
         sql = f"""
-        SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_id 
+        SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_data
         FROM {self.table}
         WHERE active=1 AND is_directory=1 AND filepath=?;
         """
         return self._fetch_one(sql, [dir_path])
 
-    def add_images(self, filepaths: Sequence[str], ephemeral: bool = False) -> None:
+    def add_images(self, filepaths: Sequence[str], ephemeral: bool = False):
         sql = f"""
         INSERT INTO {self.table}(filepath, ephemeral)
         VALUES (?, ?)
@@ -142,7 +141,7 @@ class Db:
         """
         self.cur.executemany(sql, [(f, ephemeral) for f in filepaths])
 
-    def add_directory(self, dir_path: str, include_subdirectories: bool = True) -> None:
+    def add_directory(self, dir_path: str, include_subdirectories: bool = True):
         sql = f"""
         INSERT INTO {self.table}(filepath, is_directory, include_subdirectories)
         VALUES (?, ?, ?)
@@ -150,19 +149,46 @@ class Db:
         """
         self.cur.execute(sql, [dir_path, True, include_subdirectories])
 
-    def add_eagle_folder(self, eagle_library_path: str, eagle_folder_name: str, eagle_folder_id: str) -> None:
+    def add_eagle_folder(self, eagle_library_path: str, eagle_folder_data: dict[str, str]) -> dict[str, str]:
         sql = f"""
-        INSERT INTO {self.table}(filepath, is_directory, is_eagle_directory, eagle_folder_name, eagle_folder_id)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT (filepath) DO NOTHING;
+        SELECT eagle_folder_data
+        FROM {self.table}
+        WHERE filepath = ?;
         """
-        self.cur.execute(sql, [eagle_library_path, True, True, eagle_folder_name, eagle_folder_id])
+        data = self._scalar(sql, [eagle_library_path])
+        if data is None:
+            sql = f"""
+            INSERT INTO {self.table}(filepath, is_directory, is_eagle_directory, eagle_folder_data)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (filepath) DO NOTHING;
+            """
+            self.cur.execute(sql, [eagle_library_path, True, True, json.dumps(eagle_folder_data)])
+            return eagle_folder_data
+
+        d = json.loads(data)
+        d.update(eagle_folder_data)
+        sql = f"""
+        UPDATE {self.table}
+        SET eagle_folder_data = ?
+        WHERE filepath = ?;
+        """
+        self.cur.execute(sql, [json.dumps(d), eagle_library_path])
+        return d
 
     def remove_ephemeral_images(self):
         sql = """
         DELETE FROM {self.table} WHERE ephemeral=1;
         """
         self.cur.execute(sql)
+
+    def remove_ephemeral_images_in_folder(self, dir_path: str):
+        sql = f"""
+        DELETE FROM {self.table} 
+        WHERE filepath LIKE ?
+          AND is_directory=0
+          AND ephemeral=1;
+        """
+        self._execute(sql, [dir_path + "%"])
 
     def set_image_to_inactive(self, filepath: str):
         sql = f"""

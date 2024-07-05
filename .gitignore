@@ -4,4 +4,5 @@ config.ini
 wallpaper_files.txt
 deleted_wallpaper.*
 database/main.db
+tests/integration/database/main.db
 scratch.py
