@@ -17,6 +17,14 @@ And you're set! You can add more images to the list by clicking the "Add Files t
 
 You can change various behaviors by editing the `config.ini` file that will be created after you run the app for the first time.
 
+## Random algorithm
+
+The `Random algorithm` config setting allows for the following options:
+
+* **Pure**: Picks a random image from all available images
+* **Weighted**: Picks a random image weighted based on how often the images have previously been picked. The more often an image has been used, the less likely it is to be picked.
+* **Least used**: Picks a random image from all the least used images.
+
 # Troubleshooting
 
 ## Image isn't sized properly to the monitor I want

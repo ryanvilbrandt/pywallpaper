@@ -1,6 +1,6 @@
 import os
 from unittest import TestCase
-from unittest.mock import ANY
+from unittest.mock import ANY, patch, Mock
 
 from database.db import Db
 
@@ -25,11 +25,17 @@ class TestDb(TestCase):
         with Db(self.table) as db:
             db.add_eagle_folder(r"\\NAS\Eagle\Library", {"Art": "ABCDEFG"})
             self.assertEqual(
-                [
-                    {"id": ANY, "filepath": r"\\NAS\Eagle\Library", "active": 1, "is_directory": 1,
-                     "include_subdirectories": 0, "ephemeral": 0, "is_eagle_directory": 1,
-                     "eagle_folder_data": '{"Art": "ABCDEFG"}'},
-                ],
+                [{
+                    "id": ANY,
+                    "filepath": r"\\NAS\Eagle\Library",
+                    "active": 1,
+                    "is_directory": 1,
+                    "times_used": 0,
+                    "include_subdirectories": 0,
+                    "ephemeral": 0,
+                    "is_eagle_directory": 1,
+                    "eagle_folder_data": '{"Art": "ABCDEFG"}',
+                }],
                 list(db._fetch_all(f"SELECT * FROM {self.table};")),
             )
 
@@ -38,11 +44,17 @@ class TestDb(TestCase):
             db.add_eagle_folder(r"\\NAS\Eagle\Library", {"Art": "ABCDEFG"})
             db.add_eagle_folder(r"\\NAS\Eagle\Library", {"Art Again": "ABCDEFG"})
             self.assertEqual(
-                [
-                    {"id": ANY, "filepath": r"\\NAS\Eagle\Library", "active": 1, "is_directory": 1,
-                     "include_subdirectories": 0, "ephemeral": 0, "is_eagle_directory": 1,
-                     "eagle_folder_data": '{"Art": "ABCDEFG", "Art Again": "ABCDEFG"}'},
-                ],
+                [{
+                    "id": ANY,
+                    "filepath": r"\\NAS\Eagle\Library",
+                    "active": 1,
+                    "is_directory": 1,
+                    "times_used": 0,
+                    "include_subdirectories": 0,
+                    "ephemeral": 0,
+                    "is_eagle_directory": 1,
+                    "eagle_folder_data": '{"Art": "ABCDEFG", "Art Again": "ABCDEFG"}',
+                }],
                 list(db._fetch_all(f"SELECT * FROM {self.table};")),
             )
 
@@ -51,11 +63,17 @@ class TestDb(TestCase):
             db.add_eagle_folder(r"\\NAS\Eagle\Library", {"Art": "ABCDEFG"})
             db.add_eagle_folder(r"\\NAS\Eagle\Library", {"Art Again": "ZYXWV"})
             self.assertEqual(
-                [
-                    {"id": ANY, "filepath": r"\\NAS\Eagle\Library", "active": 1, "is_directory": 1,
-                     "include_subdirectories": 0, "ephemeral": 0, "is_eagle_directory": 1,
-                     "eagle_folder_data": '{"Art": "ABCDEFG", "Art Again": "ZYXWV"}'},
-                ],
+                [{
+                    "id": ANY,
+                    "filepath": r"\\NAS\Eagle\Library",
+                    "active": 1,
+                    "is_directory": 1,
+                    "times_used": 0,
+                    "include_subdirectories": 0,
+                    "ephemeral": 0,
+                    "is_eagle_directory": 1,
+                    "eagle_folder_data": '{"Art": "ABCDEFG", "Art Again": "ZYXWV"}',
+                }],
                 list(db._fetch_all(f"SELECT * FROM {self.table};")),
             )
 
@@ -68,10 +86,58 @@ class TestDb(TestCase):
             ], ephemeral=True)
             db.remove_ephemeral_images_in_folder(r"//NAS/Library1")
             self.assertEqual(
-                [
-                    {"id": ANY, "filepath": r"//NAS/Library2/ZYX.gif", "active": 1, "is_directory": 0,
-                     "include_subdirectories": 0, "ephemeral": 1, "is_eagle_directory": 0,
-                     "eagle_folder_data": None},
-                ],
+                [{
+                    "id": ANY,
+                    "filepath": r"//NAS/Library2/ZYX.gif",
+                    "active": 1,
+                    "is_directory": 0,
+                    "times_used": 0,
+                    "include_subdirectories": 0,
+                    "ephemeral": 1,
+                    "is_eagle_directory": 0,
+                    "eagle_folder_data": None,
+                }],
                 list(db._fetch_all(f"SELECT * FROM {self.table};")),
             )
+
+    @patch("database.db.choices", return_value=[r"//NAS/Library1/ABC.png"])
+    def test_get_random_image_with_weighting(self, choices_mock: Mock):
+        with Db(self.table) as db:
+            filepaths = [
+                r"//NAS/Library1/ABC.png",
+                r"//NAS/Library1/DEF.jpg",
+                r"//NAS/Library2/ZYX.gif",
+                r"//NAS/Library2/WVU.gif",
+            ]
+            db.add_images(filepaths, ephemeral=True)
+            db.increment_times_used(filepaths[0])
+            db.increment_times_used(filepaths[1])
+            db.increment_times_used(filepaths[1])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[3])
+            self.assertEqual(filepaths[0], db.get_random_image_with_weighting())
+            choices_mock.assert_called_once_with(tuple(filepaths), weights=[4, 3, 1, 4])
+
+    @patch("database.db.choice", return_value=r"//NAS/Library1/ABC.png")
+    def test_get_random_image_from_least_used(self, choice_mock: Mock):
+        with Db(self.table) as db:
+            filepaths = [
+                r"//NAS/Library1/ABC.png",
+                r"//NAS/Library1/DEF.jpg",
+                r"//NAS/Library2/ZYX.gif",
+                r"//NAS/Library2/WVU.gif",
+            ]
+            db.add_images(filepaths, ephemeral=True)
+            db.increment_times_used(filepaths[0])
+            db.increment_times_used(filepaths[1])
+            db.increment_times_used(filepaths[1])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[3])
+            self.assertEqual(filepaths[0], db.get_random_image_from_least_used())
+            choice_mock.assert_called_once_with(['//NAS/Library1/ABC.png', '//NAS/Library2/WVU.gif'])

@@ -1,7 +1,7 @@
 import json
 import sqlite3
-from collections import OrderedDict
-from random import choice
+from collections import OrderedDict, defaultdict
+from random import choice, choices
 from sqlite3 import Cursor
 from typing import Optional, Iterator, Union, Sequence
 
@@ -72,6 +72,7 @@ class Db:
         CREATE TABLE IF NOT EXISTS {self.table} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filepath TEXT UNIQUE,
+            times_used INTEGER DEFAULT 0,
             active BOOLEAN DEFAULT TRUE,
             is_directory BOOLEAN DEFAULT FALSE,
             include_subdirectories BOOLEAN DEFAULT FALSE,
@@ -104,7 +105,9 @@ class Db:
         SELECT filepath FROM {self.table} WHERE active=1 AND is_directory=0 ORDER BY RANDOM() LIMIT 1;
         """
         result = self._fetch_one(sql)
-        return result["filepath"]
+        filepath = result["filepath"]
+        self.increment_times_used(filepath)
+        return filepath
 
     def get_random_image_v2(self) -> str:
         if self.ids is None:
@@ -116,7 +119,55 @@ class Db:
         SELECT filepath FROM {self.table} WHERE id=?;
         """
         result = self._fetch_one(sql, [choice(self.ids)[0]])
-        return result["filepath"]
+        filepath = result["filepath"]
+        self.increment_times_used(filepath)
+        return filepath
+
+    def get_random_image_with_weighting(self) -> str:
+        # Get all images and the times they've been used
+        sql = f"""
+        SELECT filepath, times_used 
+        FROM {self.table} 
+        WHERE active=1 AND is_directory=0;
+        """
+        images = self.cur.execute(sql).fetchall()
+        # Break out filepaths and times_used into their own lists
+        filepaths, times_used = zip(*[(im[0], im[1]) for im in images])
+        # Invert times_used, so we can use it as weights
+        max_times_used = max(times_used)
+        weights = [max_times_used - w + 1 for w in times_used]
+        # Get pick a random image with the generated weights
+        filepath = choices(filepaths, weights=weights)[0]
+        self.increment_times_used(filepath)
+        return filepath
+
+    def get_random_image_from_least_used(self) -> str:
+        # Get all images and the times they've been used
+        sql = f"""
+        SELECT filepath, times_used 
+        FROM {self.table} 
+        WHERE active=1 AND is_directory=0;
+        """
+        images = self.cur.execute(sql).fetchall()
+        # Sort into buckets by times used
+        weights_dict = defaultdict(list)
+        for filepath, times_used in images:
+            weights_dict[times_used].append(filepath)
+        # Get the least used images and pick a random image from that
+        least_times_used = min(weights_dict)
+        filepath = choice(weights_dict[least_times_used])
+        # Increase the counter for how many times this image has been used and return
+        self.increment_times_used(filepath)
+        return filepath
+
+    def increment_times_used(self, filepath: str):
+        # TODO add normalization of times_used values
+        sql = f"""
+        UPDATE {self.table} 
+        SET times_used = times_used + 1 
+        WHERE filepath=?;
+        """
+        self.cur.execute(sql, [filepath])
 
     def get_active_folders(self) -> Iterator[dict]:
         sql = f"""

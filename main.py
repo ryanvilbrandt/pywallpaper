@@ -177,7 +177,15 @@ class PyWallpaper(wx.Frame):
     def set_new_wallpaper(self):
         with Db(table=self.table_name) as db:
             t1 = time.perf_counter_ns()
-            self.original_file_path = db.get_random_image()
+            algorithm = self.config.get("Settings", "Random algorithm").lower()
+            if algorithm == "pure":
+                self.original_file_path = db.get_random_image()
+            elif algorithm == "weighted":
+                self.original_file_path = db.get_random_image_with_weighting()
+            elif algorithm == "least used":
+                self.original_file_path = db.get_random_image_from_least_used()
+            else:
+                raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
             t2 = time.perf_counter_ns()
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
         t1 = time.perf_counter_ns()
@@ -302,8 +310,6 @@ class PyWallpaper(wx.Frame):
             event_handler.eagle_folder_ids = eagle_folder_ids
         else:
             return
-        print(len(self.event_handlers))
-
         self.observer.schedule(
             event_handler,
             dir_path,
