@@ -19,7 +19,7 @@ You can change various behaviors by editing the `config.ini` file that will be c
 
 ## Random algorithm
 
-The `Random algorithm` config setting allows for the following options:
+The `Random algorithm` config setting defines how the wallpaper images are picked. It allows for the following options:
 
 * **Pure**: Picks a random image from all available images
 * **Weighted**: Picks a random image weighted based on how often the images have previously been picked. The more often an image has been used, the less likely it is to be picked.

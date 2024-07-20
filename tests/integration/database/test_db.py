@@ -120,6 +120,17 @@ class TestDb(TestCase):
             db.increment_times_used(filepaths[3])
             self.assertEqual(filepaths[0], db.get_random_image_with_weighting())
             choices_mock.assert_called_once_with(tuple(filepaths), weights=[4, 3, 1, 4])
+            # Check for times_used normalization
+            sql = "SELECT filepath, times_used FROM images_integration_tests;"
+            self.assertEqual(
+                [
+                    ("//NAS/Library1/ABC.png", 1),
+                    ("//NAS/Library1/DEF.jpg", 1),
+                    ("//NAS/Library2/ZYX.gif", 3),
+                    ("//NAS/Library2/WVU.gif", 0),
+                ],
+                db.cur.execute(sql).fetchall(),
+            )
 
     @patch("database.db.choice", return_value=r"//NAS/Library1/ABC.png")
     def test_get_random_image_from_least_used(self, choice_mock: Mock):
@@ -141,3 +152,47 @@ class TestDb(TestCase):
             db.increment_times_used(filepaths[3])
             self.assertEqual(filepaths[0], db.get_random_image_from_least_used())
             choice_mock.assert_called_once_with(['//NAS/Library1/ABC.png', '//NAS/Library2/WVU.gif'])
+            # Check for times_used normalization
+            sql = "SELECT filepath, times_used FROM images_integration_tests;"
+            self.assertEqual(
+                [
+                    ("//NAS/Library1/ABC.png", 1),
+                    ("//NAS/Library1/DEF.jpg", 1),
+                    ("//NAS/Library2/ZYX.gif", 3),
+                    ("//NAS/Library2/WVU.gif", 0),
+                ],
+                db.cur.execute(sql).fetchall(),
+            )
+
+    def test_normalize_times_used(self):
+        with Db(self.table) as db:
+            filepaths = [
+                r"//NAS/Library1/ABC.png",
+                r"//NAS/Library1/DEF.jpg",
+                r"//NAS/Library2/ZYX.gif",
+                r"//NAS/Library2/WVU.gif",
+            ]
+            db.add_images(filepaths, ephemeral=True)
+            db.increment_times_used(filepaths[0])
+            db.increment_times_used(filepaths[0])
+            db.increment_times_used(filepaths[0])
+            db.increment_times_used(filepaths[1])
+            db.increment_times_used(filepaths[1])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[2])
+            db.increment_times_used(filepaths[3])
+            db.increment_times_used(filepaths[3])
+            db.normalize_times_used()
+            sql = "SELECT filepath, times_used FROM images_integration_tests;"
+            self.assertEqual(
+                [
+                    ("//NAS/Library1/ABC.png", 1),
+                    ("//NAS/Library1/DEF.jpg", 0),
+                    ("//NAS/Library2/ZYX.gif", 2),
+                    ("//NAS/Library2/WVU.gif", 0),
+                ],
+                db.cur.execute(sql).fetchall(),
+            )
+

@@ -297,7 +297,10 @@ class PyWallpaper(wx.Frame):
                     folder["include_subdirectories"],
                     eagle_folder_ids,
                 )
-        self.observer.start()
+        try:
+            self.observer.start()
+        except OSError as e:
+            print(e, file=sys.stderr)
 
     def add_observer_schedule(self, dir_path: str, include_subfolders: bool = False,
                               eagle_folder_ids: Optional[list[str]] = None):

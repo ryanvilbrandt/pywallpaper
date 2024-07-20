@@ -107,6 +107,7 @@ class Db:
         result = self._fetch_one(sql)
         filepath = result["filepath"]
         self.increment_times_used(filepath)
+        self.normalize_times_used()
         return filepath
 
     def get_random_image_v2(self) -> str:
@@ -121,6 +122,7 @@ class Db:
         result = self._fetch_one(sql, [choice(self.ids)[0]])
         filepath = result["filepath"]
         self.increment_times_used(filepath)
+        self.normalize_times_used()
         return filepath
 
     def get_random_image_with_weighting(self) -> str:
@@ -139,6 +141,7 @@ class Db:
         # Get pick a random image with the generated weights
         filepath = choices(filepaths, weights=weights)[0]
         self.increment_times_used(filepath)
+        self.normalize_times_used()
         return filepath
 
     def get_random_image_from_least_used(self) -> str:
@@ -158,9 +161,10 @@ class Db:
         filepath = choice(weights_dict[least_times_used])
         # Increase the counter for how many times this image has been used and return
         self.increment_times_used(filepath)
+        self.normalize_times_used()
         return filepath
 
-    def increment_times_used(self, filepath: str):
+    def increment_times_used(self, filepath: str) -> None:
         # TODO add normalization of times_used values
         sql = f"""
         UPDATE {self.table} 
@@ -168,6 +172,19 @@ class Db:
         WHERE filepath=?;
         """
         self.cur.execute(sql, [filepath])
+
+    def normalize_times_used(self):
+        sql = f"""
+        WITH least_used AS (
+            SELECT min(times_used) AS m
+            FROM {self.table}
+            WHERE is_directory=0 AND active=1
+        )
+        UPDATE {self.table} 
+        SET times_used = times_used - (SELECT m FROM least_used)
+        WHERE is_directory=0 AND active=1;
+        """
+        self.cur.execute(sql)
 
     def get_active_folders(self) -> Iterator[dict]:
         sql = f"""
