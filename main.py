@@ -350,7 +350,6 @@ class PyWallpaper(wx.Frame):
 
     # GUI Functions
     def select_file_list(self, _event):
-        # TODO Add an option for creating a new file list in the dropdown
         selected_file_list = self.file_list_dropdown.GetValue()
         if selected_file_list == "<Add new file list>":
             dlg = wx.TextEntryDialog(self, "Enter the name of the new file list:", "Creating New File List", "")
