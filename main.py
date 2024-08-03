@@ -51,7 +51,10 @@ class PyWallpaper(wx.Frame):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.load_config()
         self.load_gui()
-        self.load_db()
+
+        # Set dropdown to saved file list
+        self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
+        self.select_file_list(None)
 
     def load_config(self):
         c = ConfigParser()
@@ -134,6 +137,11 @@ class PyWallpaper(wx.Frame):
         file_list_text = wx.StaticText(p, label=f'Wallpaper list:')
         with Db() as db:
             image_tables = db.get_image_tables()
+        if not image_tables:
+            # No image tables in the DB. Set file list to "default"
+            image_tables = ["default"]
+            self.table_name = "images_default"
+            self.make_images_table()
         self.file_list_dropdown = wx.ComboBox(p, choices=image_tables, style=wx.CB_READONLY)
         self.file_list_dropdown.Bind(wx.EVT_COMBOBOX, self.select_file_list)
         add_files_button = wx.Button(p, label="Add Files to Wallpaper List")
@@ -166,16 +174,12 @@ class PyWallpaper(wx.Frame):
         # self.Bind(wx.EVT_CLOSE, self.on_exit)
         # self.Show()
 
-    def load_db(self):
+    def make_images_table(self):
         with Db(table=self.table_name) as db:
             db.make_images_table()
 
     # Loop functions
     def run(self):
-        # Set dropdown to saved file list
-        self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
-        self.select_file_list(None)
-
         self.cycle_timer = wx.Timer()
         self.cycle_timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
         self.trigger_image_loop(None)
