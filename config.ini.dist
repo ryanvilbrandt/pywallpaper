@@ -1,6 +1,4 @@
 [Settings]
-# Name of the file list to use
-File list = default
 # Random algorithm to use, see README for details
 Random algorithm = Pure
 # The time delay between wallpapers

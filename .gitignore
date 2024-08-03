@@ -1,6 +1,7 @@
 .idea/
 venv/
 config.ini
+settings.json
 wallpaper_files.txt
 deleted_wallpaper.*
 database/main.db

@@ -82,6 +82,14 @@ class Db:
         );"""
         self.cur.execute(sql)
 
+    def get_image_tables(self):
+        sql = """
+        SELECT name
+        FROM sqlite_master
+        WHERE type='table' AND name LIKE 'images_%';
+        """
+        return [row["name"][7:] for row in self._fetch_all(sql)]
+
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""
         SELECT * FROM {self.table} AND is_directory=0 ORDER BY filepath;
