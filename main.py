@@ -142,6 +142,7 @@ class PyWallpaper(wx.Frame):
             image_tables = ["default"]
             self.table_name = "images_default"
             self.make_images_table()
+        image_tables.append("<Add new file list>")
         self.file_list_dropdown = wx.ComboBox(p, choices=image_tables, style=wx.CB_READONLY)
         self.file_list_dropdown.Bind(wx.EVT_COMBOBOX, self.select_file_list)
         add_files_button = wx.Button(p, label="Add Files to Wallpaper List")
@@ -351,13 +352,31 @@ class PyWallpaper(wx.Frame):
     def select_file_list(self, _event):
         # TODO Add an option for creating a new file list in the dropdown
         selected_file_list = self.file_list_dropdown.GetValue()
-        self.table_name = f'images_{selected_file_list}'
+        if selected_file_list == "<Add new file list>":
+            dlg = wx.TextEntryDialog(self, "Enter the name of the new file list:", "Creating New File List", "")
+            if dlg.ShowModal() == wx.ID_CANCEL:
+                self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
+                return
+            text = dlg.GetValue()
+            file_list_name = self.normalize_file_list_name(text)
+            self.table_name = f"images_{file_list_name}"
+            with Db(self.table_name) as db:
+                db.make_images_table()
+                image_tables = db.get_image_tables()
+                self.file_list_dropdown.Set(image_tables + ["<Add new file list>"])
+                self.file_list_dropdown.SetValue(file_list_name)
+        else:
+            self.table_name = f'images_{selected_file_list}'
         if _event:
             # Only advance image if it was in response to a GUI event
             self.advance_image(None, None)
         self.settings["selected_file_list"] = selected_file_list
         with open("settings.json", "w") as f:
             json.dump(self.settings, f)
+
+    @staticmethod
+    def normalize_file_list_name(name):
+        return re.sub(r"[^a-z_]", "", name.lower().replace(" ", "_"))
 
     def add_files_to_list(self, _event):
         with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
