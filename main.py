@@ -54,6 +54,10 @@ class PyWallpaper(wx.Frame):
 
         # Set dropdown to saved file list
         self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
+        # Select "default" if the selected_file_list option isn't available in the dropdown
+        selected_file_list = self.file_list_dropdown.GetValue()
+        if not selected_file_list or selected_file_list == "<Add new file list>":
+            self.file_list_dropdown.SetValue("default")
         self.select_file_list(None)
 
     def load_config(self):
@@ -216,6 +220,7 @@ class PyWallpaper(wx.Frame):
                 raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
             t2 = time.perf_counter_ns()
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
+        self.original_file_path = self.original_file_path.replace("/", "\\")
         print(f"Loading {self.original_file_path}")
         delay = self.error_delay
         try:
@@ -225,8 +230,9 @@ class PyWallpaper(wx.Frame):
             print(f"Time to load new image: {(t2 - t1) / 1000:,} us")
         except (FileNotFoundError, UnidentifiedImageError):
             print(f"Couldn't open image path {self.original_file_path!r}", file=sys.stderr)
-        except OSError:
+        except OSError as e:
             print(f"Failed to process image file: {self.original_file_path!r}", file=sys.stderr)
+            wx.MessageDialog(self, str(e), "Error").ShowModal()
         else:
             t1a = time.perf_counter_ns()
             self.set_desktop_wallpaper(file_path)
@@ -365,7 +371,7 @@ class PyWallpaper(wx.Frame):
                 self.file_list_dropdown.Set(image_tables + ["<Add new file list>"])
                 self.file_list_dropdown.SetValue(file_list_name)
         else:
-            self.table_name = f'images_{selected_file_list}'
+            self.table_name = f"images_{selected_file_list}"
         if _event:
             # Only advance image if it was in response to a GUI event
             self.advance_image(None, None)
