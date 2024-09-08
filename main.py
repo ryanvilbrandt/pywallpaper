@@ -40,6 +40,7 @@ class PyWallpaper(wx.Frame):
     temp_image_filename = None
 
     original_file_path = None
+    file_path_history = []
     cycle_timer = None
     observer, event_handlers = None, {}
     processing_eagle = None
@@ -129,6 +130,7 @@ class PyWallpaper(wx.Frame):
             pystray.MenuItem("Open Image File", self.open_image_file),
             pystray.MenuItem("Copy Image to Clipboard", self.copy_image_to_clipboard),
             pystray.MenuItem("Go to Image File in Explorer", self.go_to_image_file),
+            pystray.MenuItem("Show Previous Image", self.show_previous_image),
             pystray.MenuItem("Remove Image", self.remove_image_from_file_list),
             pystray.MenuItem("Delete Image", self.delete_image),
             pystray.MenuItem("", None),
@@ -190,9 +192,9 @@ class PyWallpaper(wx.Frame):
         p.SetSizerAndFit(outer_sizer)
 
         # Intercept window close event
-        # self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
-        self.Bind(wx.EVT_CLOSE, self.on_exit)
-        self.Show()
+        self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
+        # self.Bind(wx.EVT_CLOSE, self.on_exit)
+        # self.Show()
 
     def make_images_table(self):
         with Db(table=self.table_name) as db:
@@ -216,12 +218,15 @@ class PyWallpaper(wx.Frame):
             msg = 'No images have been loaded. Click the "Add Files to Wallpaper List" button to get started.'
             with wx.MessageDialog(self, msg, "Empty wallpaper list") as dialog:
                 dialog.ShowModal()
-            wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
             return
-        t = threading.Thread(name="image_loop", target=self.set_new_wallpaper, daemon=True)
+        t = threading.Thread(name="image_loop", target=self.pick_new_wallpaper, daemon=True)
         t.start()
 
-    def set_new_wallpaper(self):
+    def pick_new_wallpaper(self):
+        if self.original_file_path:
+            self.file_path_history.append(self.original_file_path)
+            self.file_path_history = self.file_path_history[-1 * self.config.getint("Advanced", "History size"):]
+            print(f"History: {self.file_path_history}")
         with Db(table=self.table_name) as db:
             t1 = time.perf_counter_ns()
             algorithm = self.config.get("Settings", "Random algorithm").lower()
@@ -236,6 +241,9 @@ class PyWallpaper(wx.Frame):
             t2 = time.perf_counter_ns()
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
         self.original_file_path = self.original_file_path.replace("/", "\\")
+        self.set_wallpaper()
+
+    def set_wallpaper(self):
         print(f"Loading {self.original_file_path}")
         delay = self.error_delay
         try:
@@ -329,6 +337,17 @@ class PyWallpaper(wx.Frame):
             eventType=event_type,
             strings=[message],
         )
+
+    def show_previous_image(self, _event):
+        if not self.file_path_history:
+            msg = "No previous images in history."
+            with wx.MessageDialog(self, msg, "Empty history list") as dialog:
+                dialog.ShowModal()
+            return
+        self.cycle_timer.Stop()
+        self.original_file_path = self.file_path_history.pop()
+        print(f"History: {self.file_path_history}")
+        self.set_wallpaper()
 
     def run_icon_loop(self):
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
