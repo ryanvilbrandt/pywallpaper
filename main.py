@@ -45,12 +45,15 @@ class PyWallpaper(wx.Frame):
     processing_eagle = None
 
     # GUI Elements
-    icon, file_list_dropdown, add_filepath_checkbox = None, None, None
+    icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
 
     def __init__(self):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.load_config()
         self.load_gui()
+
+        # Set image delay from GUI element
+        self.set_delay(None)
 
         # Set dropdown to saved file list
         self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
@@ -67,7 +70,6 @@ class PyWallpaper(wx.Frame):
         c.read("config.ini")
         self.config = c
 
-        self.delay = int(self.parse_timestring(c.get("Settings", "Delay")) * 1000)
         self.error_delay = int(self.parse_timestring(c.get("Settings", "Error delay")) * 1000)
 
         font_name = c.get("Filepath", "Font name")
@@ -138,7 +140,6 @@ class PyWallpaper(wx.Frame):
         # Create GUI
         p = wx.Panel(self)
 
-        file_list_text = wx.StaticText(p, label=f'Wallpaper list:')
         with Db() as db:
             image_tables = db.get_image_tables()
         if not image_tables:
@@ -149,21 +150,35 @@ class PyWallpaper(wx.Frame):
         image_tables.append("<Add new file list>")
         self.file_list_dropdown = wx.ComboBox(p, choices=image_tables, style=wx.CB_READONLY)
         self.file_list_dropdown.Bind(wx.EVT_COMBOBOX, self.select_file_list)
+
+        self.delay_value = wx.SpinCtrl(p, min=1, initial=self.settings.get("delay_value", 3))
+        self.delay_value.Bind(wx.EVT_SPINCTRL, self.set_delay)
+        self.delay_value.Bind(wx.EVT_TEXT, self.set_delay)
+        self.delay_dropdown = wx.ComboBox(p, choices=["seconds", "minutes", "hours"], style=wx.CB_READONLY)
+        self.delay_dropdown.SetValue(self.settings.get("delay_unit", "minutes"))
+        self.delay_dropdown.Bind(wx.EVT_COMBOBOX, self.set_delay)
+
         add_files_button = wx.Button(p, label="Add Files to Wallpaper List")
         add_files_button.Bind(wx.EVT_BUTTON, self.add_files_to_list)
         add_folder_button = wx.Button(p, label="Add Folder to Wallpaper List")
         add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
         add_eagle_folder_button = wx.Button(p, label="Add Eagle Folder to Wallpaper List")
         add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
+
         self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
         self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
 
         # Create a sizer to manage the layout of child widgets
         sizer = wx.BoxSizer(wx.VERTICAL)
         file_list_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        file_list_sizer.Add(file_list_text, wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
+        file_list_sizer.Add(wx.StaticText(p, label=f'Wallpaper list:'), wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
         file_list_sizer.Add(self.file_list_dropdown)
         sizer.Add(file_list_sizer, wx.SizerFlags().Border(wx.TOP, 10))
+        delay_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        delay_sizer.Add(wx.StaticText(p, label=f'Delay:'), wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
+        delay_sizer.Add(self.delay_value, wx.SizerFlags().Border(wx.RIGHT, 3))
+        delay_sizer.Add(self.delay_dropdown)
+        sizer.Add(delay_sizer, wx.SizerFlags().Border(wx.TOP, 10))
         sizer.Add(add_files_button, wx.SizerFlags().Border(wx.TOP, 10))
         sizer.Add(add_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
         sizer.Add(add_eagle_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
@@ -175,9 +190,9 @@ class PyWallpaper(wx.Frame):
         p.SetSizerAndFit(outer_sizer)
 
         # Intercept window close event
-        self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
-        # self.Bind(wx.EVT_CLOSE, self.on_exit)
-        # self.Show()
+        # self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
+        self.Bind(wx.EVT_CLOSE, self.on_exit)
+        self.Show()
 
     def make_images_table(self):
         with Db(table=self.table_name) as db:
@@ -231,7 +246,7 @@ class PyWallpaper(wx.Frame):
         except (FileNotFoundError, UnidentifiedImageError):
             print(f"Couldn't open image path {self.original_file_path!r}", file=sys.stderr)
         except OSError as e:
-            print(f"Failed to process image file: {self.original_file_path!r}", file=sys.stderr)
+            print(f"Failed to process image file: {self.original_file_path}", file=sys.stderr)
             wx.MessageDialog(self, str(e), "Error").ShowModal()
         else:
             t1a = time.perf_counter_ns()
@@ -376,8 +391,18 @@ class PyWallpaper(wx.Frame):
             # Only advance image if it was in response to a GUI event
             self.advance_image(None, None)
         self.settings["selected_file_list"] = selected_file_list
-        with open("settings.json", "w") as f:
-            json.dump(self.settings, f)
+        self.save_settings()
+
+    def set_delay(self, _event):
+        value = self.delay_value.GetValue()
+        units = {"seconds": 1, "minutes": 60, "hours": 3600}
+        unit = self.delay_dropdown.GetValue()
+        self.delay = value * units[unit] * 1000  # ms
+        print(self.delay)
+        if _event:
+            self.settings["delay_value"] = value
+            self.settings["delay_unit"] = unit
+            self.save_settings()
 
     @staticmethod
     def normalize_file_list_name(name):
