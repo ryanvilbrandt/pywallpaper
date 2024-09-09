@@ -289,10 +289,7 @@ class PyWallpaper(wx.Frame):
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
         bg_color = self.config.get("Settings", "Background color")
         if bg_color == "kmeans":
-            pixels = kmeans.convert_image_to_pixels(img)
-            # Exclude points that are too close to white (they're not interesting)
-            pixels = kmeans.exclude_pixels_near_white(pixels, 100)
-            bg_color = kmeans.get_most_common_mean(pixels, 10)
+            bg_color = kmeans.get_common_color_from_image(img, self.config)
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
         bg_aspect_ratio = bg.width / bg.height
         # Pick new image size

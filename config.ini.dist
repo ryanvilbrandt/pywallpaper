@@ -25,3 +25,8 @@ Icon path = icon.webp
 Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg
 # The number of image paths to keep in history
 History size = 10
+White exclusion threshold = 100
+Kmeans subsample size = 1000
+Kmeans cluster size = 5
+Kmeans max iterations = 10
+Kmeans distance threshold = 5.0

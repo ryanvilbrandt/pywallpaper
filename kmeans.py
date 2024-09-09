@@ -1,3 +1,6 @@
+import sys
+import traceback
+from configparser import RawConfigParser
 from time import perf_counter_ns
 
 import numpy as np
@@ -6,14 +9,76 @@ from numpy.typing import NDArray
 
 Pixel = NDArray[np.int_]
 gen = np.random.default_rng()
+perf_list = []
+
+
+def get_common_color_from_image(img: Image.Image, config: RawConfigParser) -> tuple[int, int, int]:
+    try:
+        perf()
+        pixels = convert_image_to_pixels(img)
+        perf("Convert image:")
+        pixels = subsample(
+            pixels,
+            config.getint("Advanced", "Kmeans subsample size"),
+        )
+        perf("Subsample:")
+        # Exclude points that are too close to white (they're not interesting)
+        pixels = exclude_pixels_near_white(
+            pixels,
+            config.getfloat("Advanced", "White exclusion threshold"),
+        )
+        perf("Exclude pixels:")
+        means = kmeans(
+            pixels,
+            config.getint("Advanced", "Kmeans cluster size"),
+            config.getint("Advanced", "Kmeans max iterations"),
+            config.getfloat("Advanced", "Kmeans distance threshold"),
+        )
+        perf("Kmeans:")
+        bg_color = get_most_common_mean(means)
+        perf("Most common mean:")
+        print_perf(f"Finished finding common color in")
+        return bg_color
+    except ValueError:
+        traceback.print_exc(file=sys.stderr)
+        return 0, 0, 0  # Return black by default
+
+
+def perf(title: str = ""):
+    global perf_list
+    if not title:
+        title = "Start"
+        perf_list = []
+    perf_list.append((title, perf_counter_ns()))
+
+
+def print_perf(title: str = "Total:"):
+    print("Performance times:")
+    for i, perf_tuple in enumerate(perf_list):
+        if i == 0:
+            continue
+        t1, t2 = perf_list[i - 1][1], perf_list[i][1]
+        print(f"  {perf_tuple[0]} {(t2 - t1) / 1000:,} us")
+    t1, t2 = perf_list[0][1], perf_list[-1][1]
+    print(f"{title} {(t2 - t1) / 1000:,} us")
 
 
 def convert_image_to_pixels(image: Image) -> NDArray[Pixel]:
     pixels = np.array(image)
+    # PIL Images start out as a 3D array (row, column, pixel)
+    # Check if the pixels are n=3 (RGB) or n=4 (RGBA). If n=4, drop the last item from each pixel.
+    pixel_n = pixels.shape[2]
+    if pixel_n == 4:
+        pixels = pixels[:, :, :3]
+    # Flatten the 3D array down to a 2D array (row, pixel)
     return pixels.reshape((-1, 3))
 
 
 def exclude_pixels_near_white(pixels: NDArray[Pixel], distance_threshold: float) -> NDArray[Pixel]:
+    # Allow method to skip pixel exclusion if people want
+    if distance_threshold == 0:
+        return pixels
+
     # Define the target pixel
     white_pixel = np.array([255, 255, 255])
 
@@ -27,9 +92,15 @@ def exclude_pixels_near_white(pixels: NDArray[Pixel], distance_threshold: float)
     return pixels[mask]
 
 
-def kmeans(pixels: NDArray[Pixel], n_clusters: int, max_iters: int = 10) -> dict[tuple[int, int, int], NDArray[Pixel]]:
+def subsample(pixels: NDArray[Pixel], num_samples: int) -> NDArray[Pixel]:
+    random_indices = np.random.choice(pixels.shape[0], num_samples, replace=False)
+    return pixels[random_indices]
+
+
+def kmeans(pixels: NDArray[Pixel], n_clusters: int, max_iters: int = 10, max_distance: float = 1.0
+           ) -> dict[tuple[int, int, int], NDArray[Pixel]]:
     # print(pixels)
-    means, pixel_groups_by_mean = create_random_pixels(n_clusters), []
+    means, pixel_groups_by_mean = subsample(pixels, n_clusters), []
     # print(means)
     # print("=========")
     for _ in range(max_iters):
@@ -52,7 +123,7 @@ def kmeans(pixels: NDArray[Pixel], n_clusters: int, max_iters: int = 10) -> dict
         # show_means(means, pixel_groups_by_mean)
         t2 = perf_counter_ns()
         print(f"Finished kmeans loop in {(t2 - t1) / 1000:,} us")
-        if are_pixels_within_distance(old_means, means, max_distance=0.1):
+        if are_pixels_within_distance(old_means, means, max_distance=max_distance):
             break
     return {pixel_to_tuple(new_mean): pixel_group for new_mean, pixel_group in zip(means, pixel_groups_by_mean)}
 
@@ -79,7 +150,7 @@ def mean_of_pixels(array_of_pixels: NDArray[Pixel]) -> Pixel:
 def are_pixels_within_distance(pixels_a: np.ndarray, pixels_b: np.ndarray, max_distance: float) -> bool:
     # Calculate the Euclidean distances between corresponding pixels
     distances = np.linalg.norm(pixels_a - pixels_b, axis=1)
-
+    print(f"Distances: {distances}")
     # Check if all distances are within the max_distance
     return np.all(distances <= max_distance)
 
@@ -114,9 +185,7 @@ def pixel_to_tuple(pixel: Pixel) -> tuple[int, int, int]:
     return tuple(int(x) for x in rounded_array)
 
 
-def get_most_common_mean(pixels: NDArray[Pixel], n_clusters: int):
-    t1 = perf_counter_ns()
-    means = kmeans(pixels, n_clusters)
+def get_most_common_mean(means: dict[tuple[int, int, int], NDArray[Pixel]]) -> tuple[int, int, int]:
     for mean, pixel_group in means.items():
         print(f"{mean}: {len(pixel_group)}")
     biggest_group_size = 0
@@ -125,8 +194,6 @@ def get_most_common_mean(pixels: NDArray[Pixel], n_clusters: int):
         if len(pixels) > biggest_group_size:
             biggest_mean = mean
             biggest_group_size = len(pixels)
-    t2 = perf_counter_ns()
-    print(f"Finished finding most common mean in {(t2 - t1) / 1000:,} us")
     return biggest_mean
 
 
