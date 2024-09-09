@@ -1,6 +1,9 @@
 [Settings]
 # Random algorithm to use, see README for details
 Random algorithm = Pure
+# Background color of images after they're resized for the desktop.
+# Use "kmeans" to try to estimate the most common color.
+Background color = black
 # The time delay after a wallpaper fails to load
 Error delay = 10s
 # Replace with screen size if you have trouble with multiple monitors of different sizes e.g. `1920, 1080`
