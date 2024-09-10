@@ -65,11 +65,17 @@ def print_perf(title: str = "Total:"):
 
 def convert_image_to_pixels(image: Image) -> NDArray[Pixel]:
     pixels = np.array(image)
-    # PIL Images start out as a 3D array (row, column, pixel)
-    # Check if the pixels are n=3 (RGB) or n=4 (RGBA). If n=4, drop the last item from each pixel.
-    pixel_n = pixels.shape[2]
-    if pixel_n == 4:
-        pixels = pixels[:, :, :3]
+    # PIL Images start out as a 2D array (B&W image where each pixel is just a number)
+    # or a 3D array (row, column, pixel)
+    if pixels.ndim == 2:
+        pixels = np.repeat(pixels.flatten(), 3)
+    elif pixels.ndim == 3:
+        # Check if the pixels are n=3 (RGB) or n=4 (RGBA). If n=4, drop the last item from each pixel.
+        pixel_n = pixels.shape[2]
+        if pixel_n == 4:
+            pixels = pixels[:, :, :3]
+    else:
+        raise ValueError(f"Unknown number of dimensions in image array: {pixels.ndim}")
     # Flatten the 3D array down to a 2D array (row, pixel)
     return pixels.reshape((-1, 3))
 
