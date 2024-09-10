@@ -30,3 +30,4 @@ Kmeans subsample size = 1000
 Kmeans cluster size = 5
 Kmeans max iterations = 10
 Kmeans distance threshold = 5.0
+Show kmeans clustering charts = False

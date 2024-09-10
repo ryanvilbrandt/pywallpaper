@@ -1,6 +1,7 @@
 import sys
 import traceback
 from configparser import RawConfigParser
+from math import sqrt, ceil
 from time import perf_counter_ns
 
 import numpy as np
@@ -33,6 +34,7 @@ def get_common_color_from_image(img: Image.Image, config: RawConfigParser) -> tu
             config.getint("Advanced", "Kmeans cluster size"),
             config.getint("Advanced", "Kmeans max iterations"),
             config.getfloat("Advanced", "Kmeans distance threshold"),
+            config.getboolean("Advanced", "Show kmeans clustering charts"),
         )
         perf("Kmeans:")
         bg_color = get_most_common_mean(means)
@@ -103,12 +105,11 @@ def subsample(pixels: NDArray[Pixel], num_samples: int) -> NDArray[Pixel]:
     return pixels[random_indices]
 
 
-def kmeans(pixels: NDArray[Pixel], n_clusters: int, max_iters: int = 10, max_distance: float = 1.0
-           ) -> dict[tuple[int, int, int], NDArray[Pixel]]:
-    # print(pixels)
+def kmeans(pixels: NDArray[Pixel], n_clusters: int, max_iters: int = 10, max_distance: float = 1.0,
+           show_mean_charts: bool = False) -> dict[tuple[int, int, int], NDArray[Pixel]]:
+    global mean_charts
+    mean_charts = []
     means, pixel_groups_by_mean = subsample(pixels, n_clusters), []
-    # print(means)
-    # print("=========")
     for _ in range(max_iters):
         t1 = perf_counter_ns()
         pixel_groups_by_mean = group_pixels_by_means(means, pixels)
@@ -125,12 +126,14 @@ def kmeans(pixels: NDArray[Pixel], n_clusters: int, max_iters: int = 10, max_dis
             print(f"Removed {x - y} empty groups")
         old_means = means
         means = np.array([mean_of_pixels(group) for group in pixel_groups_by_mean])
-        # print(f"New means: {means}")
-        # show_means(means, pixel_groups_by_mean)
+        if show_mean_charts:
+            save_mean_chart(means, pixel_groups_by_mean)
         t2 = perf_counter_ns()
         print(f"Finished kmeans loop in {(t2 - t1) / 1000:,} us")
         if are_pixels_within_distance(old_means, means, max_distance=max_distance):
             break
+    if show_mean_charts:
+        show_mean_chart()
     return {pixel_to_tuple(new_mean): pixel_group for new_mean, pixel_group in zip(means, pixel_groups_by_mean)}
 
 
@@ -161,9 +164,18 @@ def are_pixels_within_distance(pixels_a: np.ndarray, pixels_b: np.ndarray, max_d
     return np.all(distances <= max_distance)
 
 
-def show_means(means: NDArray[Pixel], pixels: list[NDArray[Pixel]],
-               mean_colors: list[tuple[int, int, int]]=((255, 0, 0), (0, 255, 0), (0, 0, 255)),
-               mean_radius=3, pixel_radius=1):
+mean_charts = []
+
+
+def save_mean_chart(means: NDArray[Pixel], pixels: list[NDArray[Pixel]], mean_radius=3, pixel_radius=1):
+    global mean_charts
+    mean_colors = (
+        (255, 0, 0),
+        (0, 255, 0),
+        (0, 0, 255),
+        (200, 200, 0),
+        (0, 200, 200),
+    )
     # Create a blank image with white background
     image = Image.new("RGB", (255, 255), "white")
     draw = ImageDraw.Draw(image)
@@ -174,16 +186,47 @@ def show_means(means: NDArray[Pixel], pixels: list[NDArray[Pixel]],
         if radius == 0:
             draw.pixel((x, y), fill=color)
         else:
-            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=color)
+            try:
+                draw.ellipse(
+                    (
+                        max(x - radius, 0),
+                        max(y - radius, 0),
+                        min(x + radius, 255),
+                        min(y + radius, 255)
+                    ),
+                    fill=color,
+                )
+            except ValueError as e:
+                print(e)
 
     # Project 3D pixels to 2D (ignore z-coordinate for simplicity)
-    for i, color in enumerate(mean_colors):
+    for i, mean in enumerate(means):
+        color = mean_colors[i]
         for pixel in pixels[i]:
             draw_pixel(draw, pixel, color, pixel_radius)
-        draw_pixel(draw, means[i], color, mean_radius)
+        draw_pixel(draw, mean, color, mean_radius)
 
-    image = image.resize((255 * 3, 255 * 3))
-    image.show()
+    image = image.resize((255 * 2, 255 * 2))
+    mean_charts.append(image)
+
+
+def show_mean_chart():
+    global mean_charts
+    if not mean_charts:
+        return
+    cell_width = 255 * 2
+    border = 15
+    x = ceil(sqrt(len(mean_charts)))
+    width = (cell_width + border) * x + border
+    height = (cell_width + border) * ceil(len(mean_charts) / x) + border
+    bg = Image.new("RGB", (width, height), "black")
+    for i, chart in enumerate(mean_charts):
+        x = i % 3 * (cell_width + border) + border
+        y = i // 3 * (cell_width + border) + border
+        bg.paste(chart, (x, y))
+    import threading
+    t = threading.Thread(target=bg.show)
+    t.start()
 
 
 def pixel_to_tuple(pixel: Pixel) -> tuple[int, int, int]:
