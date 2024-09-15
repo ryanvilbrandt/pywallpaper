@@ -21,7 +21,7 @@ Stroke fill = black
 # Don't mess with these unless you know what you're doing
 Temp image filename = wallpaper
 Deleted image path = deleted_wallpaper
-Icon path = icon.webp
+Icon path = icon.png
 Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg
 # The number of image paths to keep in history
 History size = 10
