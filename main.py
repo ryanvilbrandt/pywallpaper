@@ -345,15 +345,6 @@ class PyWallpaper(wx.Frame):
         right_padding = self.settings.get("right_padding", 0)
         top_padding = self.settings.get("top_padding", 0)
         bottom_padding = self.settings.get("bottom_padding", 0)
-        if padding_color:
-            if left_padding:
-                bg.paste(Image.new("RGB", (left_padding, bg.height), padding_color), (0, 0))
-            if right_padding:
-                bg.paste(Image.new("RGB", (right_padding, bg.height), padding_color), (bg.width - right_padding, 0))
-            if top_padding:
-                bg.paste(Image.new("RGB", (bg.width, top_padding), padding_color), (0, 0))
-            if bottom_padding:
-                bg.paste(Image.new("RGB", (bg.width, bottom_padding), padding_color), (0, bg.height - bottom_padding))
         if img:
             # Determine aspect ratios
             image_aspect_ratio = img.width / img.height
@@ -384,6 +375,16 @@ class PyWallpaper(wx.Frame):
                 )
             # Paste image on BG
             bg.paste(img, (paste_x, paste_y), img if kmeans.has_transparency(img) else None)
+        # Add padding after image, to cover up border
+        if padding_color:
+            if left_padding:
+                bg.paste(Image.new("RGB", (left_padding, bg.height), padding_color), (0, 0))
+            if right_padding:
+                bg.paste(Image.new("RGB", (right_padding, bg.height), padding_color), (bg.width - right_padding, 0))
+            if top_padding:
+                bg.paste(Image.new("RGB", (bg.width, top_padding), padding_color), (0, 0))
+            if bottom_padding:
+                bg.paste(Image.new("RGB", (bg.width, bottom_padding), padding_color), (0, bg.height - bottom_padding))
         return bg
 
     def add_text_to_image(self, img: Image, text: str):
