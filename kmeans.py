@@ -66,7 +66,10 @@ def print_perf(title: str = "Total:"):
 
 
 def convert_image_to_pixels(image: Image) -> NDArray[Pixel]:
-    pixels = np.array(image)
+    # First paste the image onto a white background, to flatten out any transparency
+    bg = Image.new("RGB", image.size, (255, 255, 255))
+    bg.paste(image, (0, 0), image)
+    pixels = np.array(bg)
     # PIL Images start out as a 2D array (B&W image where each pixel is just a number)
     # or a 3D array (row, column, pixel)
     if pixels.ndim == 2:

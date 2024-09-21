@@ -359,7 +359,7 @@ class PyWallpaper(wx.Frame):
             # Paste image on BG
             paste_x = (bg_width - img.width) // 2 + left_border
             paste_y = (bg_height - img.height) // 2 + top_border
-            bg.paste(img, (paste_x, paste_y))
+            bg.paste(img, (paste_x, paste_y), img)
         return bg
 
     def add_text_to_image(self, img: Image, text: str):
