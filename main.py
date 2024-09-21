@@ -31,7 +31,6 @@ SPI_SET_DESKTOP_WALLPAPER = 20
 
 
 class PyWallpaper(wx.Frame):
-
     config = None
     settings = None
     table_name = None
@@ -48,6 +47,7 @@ class PyWallpaper(wx.Frame):
 
     # GUI Elements
     icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
+    left_border, right_border, top_border, bottom_border = None, None, None, None
 
     def __init__(self):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
@@ -168,6 +168,13 @@ class PyWallpaper(wx.Frame):
         add_eagle_folder_button = wx.Button(p, label="Add Eagle Folder to Wallpaper List")
         add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
 
+        self.left_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("left_border", 0))
+        self.right_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("right_border", 0))
+        self.top_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("top_border", 0))
+        self.bottom_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("bottom_border", 0))
+        test_border_button = wx.Button(p, label="Show Border Test Wallpaper")
+        test_border_button.Bind(wx.EVT_BUTTON, self.show_border_test_wallpaper)
+
         self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
         self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
 
@@ -177,25 +184,43 @@ class PyWallpaper(wx.Frame):
         file_list_sizer.Add(wx.StaticText(p, label=f'Wallpaper list:'), wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
         file_list_sizer.Add(self.file_list_dropdown)
         sizer.Add(file_list_sizer, wx.SizerFlags().Border(wx.TOP, 10))
+
         delay_sizer = wx.BoxSizer(wx.HORIZONTAL)
         delay_sizer.Add(wx.StaticText(p, label=f'Delay:'), wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
         delay_sizer.Add(self.delay_value, wx.SizerFlags().Border(wx.RIGHT, 3))
         delay_sizer.Add(self.delay_dropdown)
         sizer.Add(delay_sizer, wx.SizerFlags().Border(wx.TOP, 10))
+
         sizer.Add(add_files_button, wx.SizerFlags().Border(wx.TOP, 10))
         sizer.Add(add_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
         sizer.Add(add_eagle_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
         sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP, 10))
 
+        sizer.Add(wx.StaticText(p, label=f'Wallpaper borders (in pixels):'), wx.SizerFlags().Border(wx.TOP, 20))
+        border_sizer = wx.GridSizer(cols=3)
+        border_sizer.AddMany([
+            (wx.StaticText(p), wx.SizerFlags()),
+            (self.top_border, wx.SizerFlags()),
+            (wx.StaticText(p), wx.SizerFlags()),
+            (self.left_border, wx.SizerFlags()),
+            (wx.StaticText(p), wx.SizerFlags()),
+            (self.right_border, wx.SizerFlags()),
+            (wx.StaticText(p), wx.SizerFlags()),
+            (self.bottom_border, wx.SizerFlags()),
+        ])
+        sizer.Add(border_sizer, wx.SizerFlags().Border(wx.TOP, 5))
+        sizer.Add(test_border_button, wx.SizerFlags().Border(wx.TOP, 5))
+
         outer_sizer = wx.BoxSizer(wx.HORIZONTAL)
         outer_sizer.Add(sizer, wx.SizerFlags().Border(wx.LEFT | wx.RIGHT, 10))
 
         p.SetSizerAndFit(outer_sizer)
+        self.Fit()
 
         # Intercept window close event
-        self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
-        # self.Bind(wx.EVT_CLOSE, self.on_exit)
-        # self.Show()
+        # self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
+        self.Bind(wx.EVT_CLOSE, self.on_exit)
+        self.Show()
 
     def make_images_table(self):
         with Db(table=self.table_name) as db:
@@ -269,7 +294,11 @@ class PyWallpaper(wx.Frame):
         # Open image
         img = Image.open(file_path)
         # Resize and apply to background
-        img = self.resize_image_to_bg(img)
+        img = self.resize_image_to_bg(
+            img,
+            self.config.get("Settings", "Background color"),
+            self.config.get("Advanced", "Border color"),
+        )
         # Add text
         if self.add_filepath_checkbox.IsChecked():
             self.add_text_to_image(img, file_path)
@@ -279,30 +308,45 @@ class PyWallpaper(wx.Frame):
         img.save(temp_file_path)
         return temp_file_path
 
-    def resize_image_to_bg(self, img: Image):
-        # Determine aspect ratios
-        image_aspect_ratio = img.width / img.height
+    def resize_image_to_bg(self, img: Image, bg_color: str, border_color: str = None) -> Image:
         force_monitor_size = self.config.get("Settings", "Force monitor size")
         if force_monitor_size:
             monitor_width, monitor_height = [int(x) for x in force_monitor_size.split(", ")]
         else:
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
-        bg_color = self.config.get("Settings", "Background color")
         if bg_color == "kmeans":
             bg_color = kmeans.get_common_color_from_image(img, self.config)
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
-        bg_aspect_ratio = bg.width / bg.height
-        # Pick new image size
-        if image_aspect_ratio > bg_aspect_ratio:
-            new_img_size = (bg.width, round(bg.width / img.width * img.height))
-        else:
-            new_img_size = (round(bg.height / img.height * img.width), bg.height)
-        # Resize image to match bg
-        img = img.resize(new_img_size)
-        # Paste image on BG
-        paste_x = (bg.width - img.width) // 2
-        paste_y = (bg.height - img.height) // 2
-        bg.paste(img, (paste_x, paste_y))
+        left_border = self.settings.get("left_border", 0)
+        right_border = self.settings.get("right_border", 0)
+        top_border = self.settings.get("top_border", 0)
+        bottom_border = self.settings.get("bottom_border", 0)
+        if border_color:
+            if left_border:
+                bg.paste(Image.new("RGB", (left_border, bg.height), border_color), (0, 0))
+            if right_border:
+                bg.paste(Image.new("RGB", (right_border, bg.height), border_color), (bg.width - right_border, 0))
+            if top_border:
+                bg.paste(Image.new("RGB", (bg.width, top_border), border_color), (0, 0))
+            if bottom_border:
+                bg.paste(Image.new("RGB", (bg.width, bottom_border), border_color), (0, bg.height - bottom_border))
+        if img:
+            # Determine aspect ratios
+            image_aspect_ratio = img.width / img.height
+            bg_width = bg.width - left_border - right_border
+            bg_height = bg.height - top_border - bottom_border
+            bg_aspect_ratio = bg_width / bg_height
+            # Pick new image size
+            if image_aspect_ratio > bg_aspect_ratio:
+                new_img_size = (bg_width, round(bg_width / img.width * img.height))
+            else:
+                new_img_size = (round(bg_height / img.height * img.width), bg_height)
+            # Resize image to match bg
+            img = img.resize(new_img_size)
+            # Paste image on BG
+            paste_x = (bg_width - img.width) // 2 + left_border
+            paste_y = (bg_height - img.height) // 2 + top_border
+            bg.paste(img, (paste_x, paste_y))
         return bg
 
     def add_text_to_image(self, img: Image, text: str):
@@ -427,6 +471,19 @@ class PyWallpaper(wx.Frame):
             self.settings["delay_unit"] = unit
             self.save_settings()
 
+    def show_border_test_wallpaper(self, _event):
+        self.settings["left_border"] = self.left_border.GetValue()
+        self.settings["right_border"] = self.right_border.GetValue()
+        self.settings["top_border"] = self.top_border.GetValue()
+        self.settings["bottom_border"] = self.bottom_border.GetValue()
+        print(self.settings)
+        self.save_settings()
+        img = self.resize_image_to_bg(None, "black", "white")
+        # Write to temp file
+        temp_file_path = self.temp_image_filename + ".png"
+        img.save(temp_file_path)
+        self.set_desktop_wallpaper(temp_file_path)
+
     @staticmethod
     def normalize_file_list_name(name):
         return re.sub(r"[^a-z_]", "", name.lower().replace(" ", "_"))
@@ -488,12 +545,13 @@ class PyWallpaper(wx.Frame):
                 image_folders[folder["name"]] = folder["id"]
                 if folder["children"]:
                     add_to_image_folder_dict(folder["children"])
+
         add_to_image_folder_dict(metadata["folders"])
 
         # Prompt the user to pick a folder name
         folder_names, folder_ids = zip(*image_folders.items())
         with wx.MultiChoiceDialog(self, "Pick Folders to add to Wallpaper List", "Folders:",
-                                   choices=folder_names) as choice_dialog:
+                                  choices=folder_names) as choice_dialog:
             if choice_dialog.ShowModal() == wx.ID_CANCEL:
                 return
         folder_data = {folder_names[i]: folder_ids[i] for i in choice_dialog.GetSelections()}
@@ -536,7 +594,8 @@ class PyWallpaper(wx.Frame):
 
     def get_file_list_in_eagle_folder(self, dir_path: str, folder_ids: list[str]) -> Sequence[str]:
         self.processing_eagle = True
-        progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...", style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
+        progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...",
+                                         style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
         try:
             file_list = []
             folder_list = glob(os.path.join(dir_path, "images/*"))

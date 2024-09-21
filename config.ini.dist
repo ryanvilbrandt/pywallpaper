@@ -23,6 +23,8 @@ Temp image filename = wallpaper
 Deleted image path = deleted_wallpaper
 Icon path = icon.png
 Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg
+# Set this to a color value to show borders
+Border color =
 # The number of image paths to keep in history
 History size = 10
 White exclusion threshold = 100
