@@ -516,7 +516,7 @@ class PyWallpaper(wx.Frame):
         self.settings["bottom_padding"] = self.bottom_padding.GetValue()
         print(self.settings)
         self.save_settings()
-        img = self.resize_image_to_bg(None, "black", "white")
+        img = self.resize_image_to_bg(None, "black", "", "white")
         # Write to temp file
         temp_file_path = self.temp_image_filename + ".png"
         img.save(temp_file_path)
