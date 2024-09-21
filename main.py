@@ -218,9 +218,9 @@ class PyWallpaper(wx.Frame):
         self.Fit()
 
         # Intercept window close event
-        # self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
-        self.Bind(wx.EVT_CLOSE, self.on_exit)
-        self.Show()
+        self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
+        # self.Bind(wx.EVT_CLOSE, self.on_exit)
+        # self.Show()
 
     def make_images_table(self):
         with Db(table=self.table_name) as db:
