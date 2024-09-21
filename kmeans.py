@@ -13,6 +13,21 @@ gen = np.random.default_rng()
 perf_list = []
 
 
+def has_transparency(img: Image):
+    if img.info.get("transparency", None) is not None:
+        return True
+    if img.mode == "P":
+        transparent = img.info.get("transparency", -1)
+        for _, index in img.getcolors():
+            if index == transparent:
+                return True
+    elif img.mode == "RGBA":
+        extrema = img.getextrema()
+        if extrema[3][0] < 255:
+            return True
+    return False
+
+
 def get_common_color_from_image(img: Image.Image, config: RawConfigParser) -> tuple[int, int, int]:
     try:
         perf()
@@ -68,7 +83,7 @@ def print_perf(title: str = "Total:"):
 def convert_image_to_pixels(image: Image) -> NDArray[Pixel]:
     # First paste the image onto a white background, to flatten out any transparency
     bg = Image.new("RGB", image.size, (255, 255, 255))
-    bg.paste(image, (0, 0), image)
+    bg.paste(image, (0, 0), image if has_transparency(image) else None)
     pixels = np.array(bg)
     # PIL Images start out as a 2D array (B&W image where each pixel is just a number)
     # or a 3D array (row, column, pixel)
@@ -172,13 +187,7 @@ mean_charts = []
 
 def save_mean_chart(means: NDArray[Pixel], pixels: list[NDArray[Pixel]], mean_radius=3, pixel_radius=1):
     global mean_charts
-    mean_colors = (
-        (255, 0, 0),
-        (0, 255, 0),
-        (0, 0, 255),
-        (200, 200, 0),
-        (0, 200, 200),
-    )
+    mean_colors = ("red", "green", "blue", "orange", "yellow", "pink", "purple", "cyan", "magenta", "brown")
     # Create a blank image with white background
     image = Image.new("RGB", (255, 255), "white")
     draw = ImageDraw.Draw(image)

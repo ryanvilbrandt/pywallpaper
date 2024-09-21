@@ -252,6 +252,10 @@ class PyWallpaper(wx.Frame):
         t.start()
 
     def pick_new_wallpaper(self):
+        test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback=None)
+        if test_wallpaper:
+            self.set_wallpaper(test_wallpaper)
+            return
         if self.original_file_path:
             self.file_path_history.append(self.original_file_path)
             self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
@@ -270,20 +274,20 @@ class PyWallpaper(wx.Frame):
             t2 = time.perf_counter_ns()
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
         self.original_file_path = self.original_file_path.replace("/", "\\")
-        self.set_wallpaper()
+        self.set_wallpaper(self.original_file_path)
 
-    def set_wallpaper(self):
-        print(f"Loading {self.original_file_path}")
+    def set_wallpaper(self, filepath):
+        print(f"Loading {filepath}")
         delay = self.error_delay
         try:
             t1 = time.perf_counter_ns()
-            file_path = self.make_image(self.original_file_path)
+            file_path = self.make_image(filepath)
             t2 = time.perf_counter_ns()
             print(f"Time to load new image: {(t2 - t1) / 1000:,} us")
         except (FileNotFoundError, UnidentifiedImageError):
-            print(f"Couldn't open image path {self.original_file_path!r}", file=sys.stderr)
+            print(f"Couldn't open image path {filepath!r}", file=sys.stderr)
         except OSError as e:
-            print(f"Failed to process image file: {self.original_file_path}", file=sys.stderr)
+            print(f"Failed to process image file: {filepath}", file=sys.stderr)
             wx.MessageDialog(self, str(e), "Error").ShowModal()
         else:
             t1a = time.perf_counter_ns()
@@ -359,8 +363,10 @@ class PyWallpaper(wx.Frame):
             # Paste image on BG
             paste_x = (bg_width - img.width) // 2 + left_border
             paste_y = (bg_height - img.height) // 2 + top_border
-            bg.paste(img, (paste_x, paste_y), img)
+            bg.paste(img, (paste_x, paste_y), img if kmeans.has_transparency(img) else None)
         return bg
+
+    @staticmethod
 
     def add_text_to_image(self, img: Image, text: str):
         draw = ImageDraw.Draw(img)
@@ -408,7 +414,7 @@ class PyWallpaper(wx.Frame):
         self.cycle_timer.Stop()
         self.original_file_path = self.file_path_history.pop()
         print(f"History: {self.file_path_history}")
-        self.set_wallpaper()
+        self.set_wallpaper(self.original_file_path)
 
     def run_icon_loop(self):
         threading.Thread(name="icon.run()", target=self.icon.run, daemon=True).start()
