@@ -4,8 +4,8 @@ Random algorithm = Pure
 # Background color of images after they're resized for the desktop.
 # Use "kmeans" to try to estimate the most common color.
 Background color = black
-# Set this to a color value to show borders
-Border color =
+# Set this to a color value to show padding when displaying wallpapers
+Padding color =
 # The number of image paths to keep in history
 History size = 10
 # The time delay after a wallpaper fails to load

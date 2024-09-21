@@ -48,7 +48,7 @@ class PyWallpaper(wx.Frame):
 
     # GUI Elements
     icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
-    left_border, right_border, top_border, bottom_border = None, None, None, None
+    left_padding, right_padding, top_padding, bottom_padding = None, None, None, None
 
     def __init__(self, debug: bool = False):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
@@ -169,12 +169,12 @@ class PyWallpaper(wx.Frame):
         add_eagle_folder_button = wx.Button(p, label="Add Eagle Folder to Wallpaper List")
         add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
 
-        self.left_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("left_border", 0))
-        self.right_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("right_border", 0))
-        self.top_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("top_border", 0))
-        self.bottom_border = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("bottom_border", 0))
-        test_border_button = wx.Button(p, label="Show Border Test Wallpaper")
-        test_border_button.Bind(wx.EVT_BUTTON, self.show_border_test_wallpaper)
+        self.left_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("left_padding", 0))
+        self.right_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("right_padding", 0))
+        self.top_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("top_padding", 0))
+        self.bottom_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("bottom_padding", 0))
+        test_padding_button = wx.Button(p, label="Show Padding Test Wallpaper")
+        test_padding_button.Bind(wx.EVT_BUTTON, self.show_padding_test_wallpaper)
 
         self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
         self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
@@ -197,20 +197,20 @@ class PyWallpaper(wx.Frame):
         sizer.Add(add_eagle_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
         sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP, 10))
 
-        sizer.Add(wx.StaticText(p, label=f'Wallpaper borders (in pixels):'), wx.SizerFlags().Border(wx.TOP, 20))
+        sizer.Add(wx.StaticText(p, label=f'Wallpaper padding (in pixels):'), wx.SizerFlags().Border(wx.TOP, 20))
         border_sizer = wx.GridSizer(cols=3)
         border_sizer.AddMany([
             (wx.StaticText(p), wx.SizerFlags()),
-            (self.top_border, wx.SizerFlags()),
+            (self.top_padding, wx.SizerFlags()),
             (wx.StaticText(p), wx.SizerFlags()),
-            (self.left_border, wx.SizerFlags()),
+            (self.left_padding, wx.SizerFlags()),
             (wx.StaticText(p), wx.SizerFlags()),
-            (self.right_border, wx.SizerFlags()),
+            (self.right_padding, wx.SizerFlags()),
             (wx.StaticText(p), wx.SizerFlags()),
-            (self.bottom_border, wx.SizerFlags()),
+            (self.bottom_padding, wx.SizerFlags()),
         ])
         sizer.Add(border_sizer, wx.SizerFlags().Border(wx.TOP, 5))
-        sizer.Add(test_border_button, wx.SizerFlags().Border(wx.TOP, 5))
+        sizer.Add(test_padding_button, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
 
         outer_sizer = wx.BoxSizer(wx.HORIZONTAL)
         outer_sizer.Add(sizer, wx.SizerFlags().Border(wx.LEFT | wx.RIGHT, 10))
@@ -304,7 +304,7 @@ class PyWallpaper(wx.Frame):
         img = self.resize_image_to_bg(
             img,
             self.str_to_color(self.config.get("Settings", "Background color")),
-            self.str_to_color(self.config.get("Settings", "Border color")),
+            self.str_to_color(self.config.get("Settings", "Padding color")),
         )
         # Add text
         if self.add_filepath_checkbox.IsChecked():
@@ -334,24 +334,24 @@ class PyWallpaper(wx.Frame):
         if bg_color == "kmeans":
             bg_color = kmeans.get_common_color_from_image(img, self.config)
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
-        left_border = self.settings.get("left_border", 0)
-        right_border = self.settings.get("right_border", 0)
-        top_border = self.settings.get("top_border", 0)
-        bottom_border = self.settings.get("bottom_border", 0)
+        left_padding = self.settings.get("left_padding", 0)
+        right_padding = self.settings.get("right_padding", 0)
+        top_padding = self.settings.get("top_padding", 0)
+        bottom_padding = self.settings.get("bottom_padding", 0)
         if border_color:
-            if left_border:
-                bg.paste(Image.new("RGB", (left_border, bg.height), border_color), (0, 0))
-            if right_border:
-                bg.paste(Image.new("RGB", (right_border, bg.height), border_color), (bg.width - right_border, 0))
-            if top_border:
-                bg.paste(Image.new("RGB", (bg.width, top_border), border_color), (0, 0))
-            if bottom_border:
-                bg.paste(Image.new("RGB", (bg.width, bottom_border), border_color), (0, bg.height - bottom_border))
+            if left_padding:
+                bg.paste(Image.new("RGB", (left_padding, bg.height), border_color), (0, 0))
+            if right_padding:
+                bg.paste(Image.new("RGB", (right_padding, bg.height), border_color), (bg.width - right_padding, 0))
+            if top_padding:
+                bg.paste(Image.new("RGB", (bg.width, top_padding), border_color), (0, 0))
+            if bottom_padding:
+                bg.paste(Image.new("RGB", (bg.width, bottom_padding), border_color), (0, bg.height - bottom_padding))
         if img:
             # Determine aspect ratios
             image_aspect_ratio = img.width / img.height
-            bg_width = bg.width - left_border - right_border
-            bg_height = bg.height - top_border - bottom_border
+            bg_width = bg.width - left_padding - right_padding
+            bg_height = bg.height - top_padding - bottom_padding
             bg_aspect_ratio = bg_width / bg_height
             # Pick new image size
             if image_aspect_ratio > bg_aspect_ratio:
@@ -361,12 +361,10 @@ class PyWallpaper(wx.Frame):
             # Resize image to match bg
             img = img.resize(new_img_size)
             # Paste image on BG
-            paste_x = (bg_width - img.width) // 2 + left_border
-            paste_y = (bg_height - img.height) // 2 + top_border
+            paste_x = (bg_width - img.width) // 2 + left_padding
+            paste_y = (bg_height - img.height) // 2 + top_padding
             bg.paste(img, (paste_x, paste_y), img if kmeans.has_transparency(img) else None)
         return bg
-
-    @staticmethod
 
     def add_text_to_image(self, img: Image, text: str):
         draw = ImageDraw.Draw(img)
@@ -490,11 +488,11 @@ class PyWallpaper(wx.Frame):
             self.settings["delay_unit"] = unit
             self.save_settings()
 
-    def show_border_test_wallpaper(self, _event):
-        self.settings["left_border"] = self.left_border.GetValue()
-        self.settings["right_border"] = self.right_border.GetValue()
-        self.settings["top_border"] = self.top_border.GetValue()
-        self.settings["bottom_border"] = self.bottom_border.GetValue()
+    def show_padding_test_wallpaper(self, _event):
+        self.settings["left_padding"] = self.left_padding.GetValue()
+        self.settings["right_padding"] = self.right_padding.GetValue()
+        self.settings["top_padding"] = self.top_padding.GetValue()
+        self.settings["bottom_padding"] = self.bottom_padding.GetValue()
         print(self.settings)
         self.save_settings()
         img = self.resize_image_to_bg(None, "black", "white")
