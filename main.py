@@ -299,8 +299,8 @@ class PyWallpaper(wx.Frame):
         # Resize and apply to background
         img = self.resize_image_to_bg(
             img,
-            self.config.get("Settings", "Background color"),
-            self.config.get("Advanced", "Border color"),
+            self.str_to_color(self.config.get("Settings", "Background color")),
+            self.str_to_color(self.config.get("Advanced", "Border color")),
         )
         # Add text
         if self.add_filepath_checkbox.IsChecked():
@@ -310,6 +310,16 @@ class PyWallpaper(wx.Frame):
         temp_file_path = self.temp_image_filename + ext
         img.save(temp_file_path)
         return temp_file_path
+
+    @staticmethod
+    def str_to_color(color: str):
+        """
+        Checks if the color string is a tuple of ints, and converts it. Otherwise, returns the string unchanged.
+        """
+        m = re.search(r"(\d+),\s*(\d+),\s*(\d+)", color)
+        if m:
+            return int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return color
 
     def resize_image_to_bg(self, img: Image, bg_color: str, border_color: str = None) -> Image:
         force_monitor_size = self.config.get("Settings", "Force monitor size")
