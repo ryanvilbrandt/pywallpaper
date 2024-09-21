@@ -4,13 +4,17 @@ Random algorithm = Pure
 # Background color of images after they're resized for the desktop.
 # Use "kmeans" to try to estimate the most common color.
 Background color = black
+# Set this to a color value to show borders
+Border color =
+# The number of image paths to keep in history
+History size = 10
 # The time delay after a wallpaper fails to load
 Error delay = 10s
 # Replace with screen size if you have trouble with multiple monitors of different sizes e.g. `1920, 1080`
 Force monitor size =
 
 [Filepath]
-Add filepath to images = true
+Add filepath to images = false
 Font name = arial.ttf
 Font size = 24
 Text fill = yellow
@@ -23,10 +27,6 @@ Temp image filename = wallpaper
 Deleted image path = deleted_wallpaper
 Icon path = icon.png
 Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg
-# Set this to a color value to show borders
-Border color =
-# The number of image paths to keep in history
-History size = 10
 White exclusion threshold = 100
 Kmeans subsample size = 1000
 Kmeans cluster size = 5

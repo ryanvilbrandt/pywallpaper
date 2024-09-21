@@ -254,7 +254,7 @@ class PyWallpaper(wx.Frame):
     def pick_new_wallpaper(self):
         if self.original_file_path:
             self.file_path_history.append(self.original_file_path)
-            self.file_path_history = self.file_path_history[-1 * self.config.getint("Advanced", "History size"):]
+            self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
             print(f"History: {self.file_path_history}")
         with Db(table=self.table_name) as db:
             t1 = time.perf_counter_ns()
@@ -300,7 +300,7 @@ class PyWallpaper(wx.Frame):
         img = self.resize_image_to_bg(
             img,
             self.str_to_color(self.config.get("Settings", "Background color")),
-            self.str_to_color(self.config.get("Advanced", "Border color")),
+            self.str_to_color(self.config.get("Settings", "Border color")),
         )
         # Add text
         if self.add_filepath_checkbox.IsChecked():
