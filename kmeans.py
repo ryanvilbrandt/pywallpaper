@@ -1,3 +1,4 @@
+import re
 import sys
 import traceback
 from configparser import RawConfigParser
@@ -28,7 +29,7 @@ def has_transparency(img: Image):
     return False
 
 
-def get_common_color_from_image(img: Image.Image, config: RawConfigParser) -> tuple[int, int, int]:
+def get_common_colors_from_image(img: Image.Image, config: RawConfigParser) -> list[tuple[int, int, int]]:
     try:
         perf()
         pixels = convert_image_to_pixels(img)
@@ -52,13 +53,13 @@ def get_common_color_from_image(img: Image.Image, config: RawConfigParser) -> tu
             config.getboolean("Advanced", "Show kmeans clustering charts"),
         )
         perf("Kmeans:")
-        bg_color = get_most_common_mean(means)
+        common_colors = sort_means(means)
         perf("Most common mean:")
         print_perf(f"Finished finding common color in")
-        return bg_color
+        return common_colors
     except ValueError:
         traceback.print_exc(file=sys.stderr)
-        return 0, 0, 0  # Return black by default
+        return [(0, 0, 0)] * config.getint("Advanced", "Kmeans cluster size")  # Return black by default
 
 
 def perf(title: str = ""):
@@ -246,16 +247,26 @@ def pixel_to_tuple(pixel: Pixel) -> tuple[int, int, int]:
     return tuple(int(x) for x in rounded_array)
 
 
-def get_most_common_mean(means: dict[tuple[int, int, int], NDArray[Pixel]]) -> tuple[int, int, int]:
-    for mean, pixel_group in means.items():
+def sort_means(means: dict[tuple[int, int, int], NDArray[Pixel]]) -> list[tuple[int, int, int]]:
+    items = means.items()
+    for mean, pixel_group in items:
         print(f"{mean}: {len(pixel_group)}")
-    biggest_group_size = 0
-    biggest_mean = None
-    for mean, pixels in means.items():
-        if len(pixels) > biggest_group_size:
-            biggest_mean = mean
-            biggest_group_size = len(pixels)
-    return biggest_mean
+    s = sorted(items, key=lambda x: len(x[1]), reverse=True)
+    return [x[0] for x in s]
+
+
+def get_common_color(means: list[tuple[int, int, int]], config_value: str) -> tuple[int, int, int]:
+    """
+    Parses config value to determine which common color to use. If the image ends in digits (e.g. kmeans2), use the
+    number at the end to determine which common color to use. Otherwise, assume index=0.
+
+    The number will be reduced by 1 to determine what index to use. E.g. kmeans2 will use index=1.
+    """
+    m = re.search(r"^.*?(\d+)$", config_value)
+    if m:
+        index = int(m.group(1)) - 1
+        return means[max(0, index)]
+    return means[0]
 
 
 def main():

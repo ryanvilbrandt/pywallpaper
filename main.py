@@ -304,6 +304,7 @@ class PyWallpaper(wx.Frame):
         img = self.resize_image_to_bg(
             img,
             self.str_to_color(self.config.get("Settings", "Background color")),
+            self.str_to_color(self.config.get("Settings", "Border color")),
             self.str_to_color(self.config.get("Settings", "Padding color")),
         )
         # Add text
@@ -325,28 +326,34 @@ class PyWallpaper(wx.Frame):
             return int(m.group(1)), int(m.group(2)), int(m.group(3))
         return color
 
-    def resize_image_to_bg(self, img: Image, bg_color: str, border_color: str = None) -> Image:
+    def resize_image_to_bg(self, img: Image, bg_color: str, border_color: str = "", padding_color: str = "") -> Image:
         force_monitor_size = self.config.get("Settings", "Force monitor size")
         if force_monitor_size:
             monitor_width, monitor_height = [int(x) for x in force_monitor_size.split(", ")]
         else:
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
-        if bg_color == "kmeans":
-            bg_color = kmeans.get_common_color_from_image(img, self.config)
+        if "kmean" in bg_color or "kmean" in border_color or "kmean" in padding_color:
+            common_colors = kmeans.get_common_colors_from_image(img, self.config)
+            if "kmean" in bg_color:
+                bg_color = kmeans.get_common_color(common_colors, bg_color)
+            if "kmean" in border_color:
+                border_color = kmeans.get_common_color(common_colors, border_color)
+            if "kmean" in padding_color:
+                padding_color = kmeans.get_common_color(common_colors, padding_color)
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
         left_padding = self.settings.get("left_padding", 0)
         right_padding = self.settings.get("right_padding", 0)
         top_padding = self.settings.get("top_padding", 0)
         bottom_padding = self.settings.get("bottom_padding", 0)
-        if border_color:
+        if padding_color:
             if left_padding:
-                bg.paste(Image.new("RGB", (left_padding, bg.height), border_color), (0, 0))
+                bg.paste(Image.new("RGB", (left_padding, bg.height), padding_color), (0, 0))
             if right_padding:
-                bg.paste(Image.new("RGB", (right_padding, bg.height), border_color), (bg.width - right_padding, 0))
+                bg.paste(Image.new("RGB", (right_padding, bg.height), padding_color), (bg.width - right_padding, 0))
             if top_padding:
-                bg.paste(Image.new("RGB", (bg.width, top_padding), border_color), (0, 0))
+                bg.paste(Image.new("RGB", (bg.width, top_padding), padding_color), (0, 0))
             if bottom_padding:
-                bg.paste(Image.new("RGB", (bg.width, bottom_padding), border_color), (0, bg.height - bottom_padding))
+                bg.paste(Image.new("RGB", (bg.width, bottom_padding), padding_color), (0, bg.height - bottom_padding))
         if img:
             # Determine aspect ratios
             image_aspect_ratio = img.width / img.height
@@ -360,9 +367,22 @@ class PyWallpaper(wx.Frame):
                 new_img_size = (round(bg_height / img.height * img.width), bg_height)
             # Resize image to match bg
             img = img.resize(new_img_size)
-            # Paste image on BG
+            # Draw image border first
             paste_x = (bg_width - img.width) // 2 + left_padding
             paste_y = (bg_height - img.height) // 2 + top_padding
+            border_size = self.config.getint("Settings", "Border size", fallback=0)
+            if border_size:
+                draw = ImageDraw.Draw(bg)
+                draw.rectangle(
+                    (
+                        paste_x - border_size,
+                        paste_y - border_size,
+                        paste_x + img.width + border_size,
+                        paste_y + img.height + border_size,
+                    ),
+                    fill=border_color
+                )
+            # Paste image on BG
             bg.paste(img, (paste_x, paste_y), img if kmeans.has_transparency(img) else None)
         return bg
 

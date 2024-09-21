@@ -4,6 +4,10 @@ Random algorithm = Pure
 # Background color of images after they're resized for the desktop.
 # Use "kmeans" to try to estimate the most common color.
 Background color = black
+# Sets borders size in pixels
+Border size = 0
+# Set this to "kmeans" to use the most common color for the border, or "kmeans2" for the 2nd most common color
+Border color = black
 # Set this to a color value to show padding when displaying wallpapers
 Padding color =
 # The number of image paths to keep in history
