@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from argparse import ArgumentParser
 from configparser import ConfigParser
 from glob import glob
 from io import BytesIO
@@ -49,10 +50,10 @@ class PyWallpaper(wx.Frame):
     icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
     left_border, right_border, top_border, bottom_border = None, None, None, None
 
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.load_config()
-        self.load_gui()
+        self.load_gui(debug)
 
         # Set image delay from GUI element
         self.set_delay(None)
@@ -123,7 +124,7 @@ class PyWallpaper(wx.Frame):
             pass
         return seconds
 
-    def load_gui(self):
+    def load_gui(self, debug: bool):
         # Create a system tray icon
         image = Image.open(self.config.get("Advanced", "Icon path"))
         menu = (
@@ -217,10 +218,12 @@ class PyWallpaper(wx.Frame):
         p.SetSizerAndFit(outer_sizer)
         self.Fit()
 
-        # Intercept window close event
-        self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
-        # self.Bind(wx.EVT_CLOSE, self.on_exit)
-        # self.Show()
+        if debug:
+            self.Bind(wx.EVT_CLOSE, self.on_exit)
+            self.Show()
+        else:
+            # Intercept window close event
+            self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
 
     def make_images_table(self):
         with Db(table=self.table_name) as db:
@@ -754,7 +757,14 @@ class MyEventHandler(FileSystemEventHandler):
             db.delete_image(file_path)
 
 
+def parse_args():
+    parser = ArgumentParser("PyWallpaper")
+    parser.add_argument("-d", "--debug", action="store_true")
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
+    args = parse_args()
     app = wx.App()
-    PyWallpaper().run()
+    PyWallpaper(debug=args.debug).run()
     app.MainLoop()
