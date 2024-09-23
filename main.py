@@ -252,7 +252,7 @@ class PyWallpaper(wx.Frame):
         t.start()
 
     def pick_new_wallpaper(self):
-        test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback=None)
+        test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback="").strip('"')
         if test_wallpaper:
             self.set_wallpaper(test_wallpaper)
             return

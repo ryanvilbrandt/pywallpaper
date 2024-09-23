@@ -265,7 +265,7 @@ def get_common_color(means: list[tuple[int, int, int]], config_value: str) -> tu
     m = re.search(r"^.*?(\d+)$", config_value)
     if m:
         index = int(m.group(1)) - 1
-        return means[max(0, index)]
+        return means[max(0, min(index, len(means) - 1))]
     return means[0]
 
 
