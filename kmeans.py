@@ -15,7 +15,11 @@ perf_list = []
 
 
 def has_transparency(img: Image):
+    if img.format == "GIF":
+        return False
     if img.info.get("transparency", None) is not None:
+        if img.info.get("version", "").startswith(b"GIF"):
+            return False
         return True
     if img.mode == "P":
         transparent = img.info.get("transparency", -1)
