@@ -18,7 +18,10 @@ def has_transparency(img: Image):
     if img.format == "GIF":
         return False
     if img.info.get("transparency", None) is not None:
-        if img.info.get("version", "").startswith(b"GIF"):
+        version = img.info.get("version", "")
+        if isinstance(version, str):
+            version = version.encode()
+        if version.startswith(b"GIF"):
             return False
         return True
     if img.mode == "P":
