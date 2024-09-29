@@ -17,7 +17,9 @@ perf_list = []
 def has_transparency(img: Image):
     if img.format == "GIF":
         return False
-    if img.info.get("transparency", None) is not None:
+    if "transparency" in img.info:
+        if not img.info["transparency"]:
+            return False
         version = img.info.get("version", "")
         if isinstance(version, str):
             version = version.encode()
