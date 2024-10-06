@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+import winreg
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from glob import glob
@@ -28,7 +29,7 @@ import kmeans
 from database.db import Db
 
 VERSION = "0.3.2"
-SPI_SET_DESKTOP_WALLPAPER = 20
+SPI_SET_DESKTOP_WALLPAPER = 0x14
 
 
 class PyWallpaper(wx.Frame):
@@ -413,6 +414,16 @@ class PyWallpaper(wx.Frame):
             return False
         self.create_windows_event_log("Setting wallpaper to {}".format(path))
         ctypes.windll.user32.SystemParametersInfoW(SPI_SET_DESKTOP_WALLPAPER, 0, path, 0)
+        # winreg.SetValueEx(
+        #     winreg.OpenKey(
+        #         winreg.HKEY_CURRENT_USER,
+        #         "Control Panel\\Desktop",
+        #         0, winreg.KEY_SET_VALUE),
+        #     "Wallpaper",
+        #     0,
+        #     winreg.REG_SZ,
+        #     path,
+        # )
         return True
 
     @staticmethod
