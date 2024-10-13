@@ -65,7 +65,7 @@ def get_common_colors_from_image(img: Image.Image, config: RawConfigParser) -> l
         return common_colors
     except ValueError:
         traceback.print_exc(file=sys.stderr)
-        return [(0, 0, 0)] * config.getint("Advanced", "Kmeans cluster size")  # Return black by default
+        return [(0, 0, 0)] * config.getint("Kmeans", "Cluster size")  # Return black by default
 
 
 def perf(title: str = ""):
@@ -135,11 +135,14 @@ def kmeans(pixels: NDArray[Pixel], config: RawConfigParser) -> dict[tuple[int, i
     n_clusters = config.getint("Kmeans", "Cluster size", fallback=5)
     max_iters = config.getint("Kmeans", "Max iterations", fallback=10)
     max_distance = config.getfloat("Kmeans", "Distance threshold", fallback=1.0)
+    pruning_distance = config.getfloat("Kmeans", "Pruning distance", fallback=10.0)
     show_mean_charts = config.getboolean("Kmeans", "Show clustering charts", fallback=False)
+    crop_mean_charts = config.getboolean("Kmeans", "Crop clustering charts", fallback=False)
     mean_charts = []
     means, pixel_groups_by_mean = subsample(pixels, n_clusters), []
     for _ in range(max_iters):
         t1 = perf_counter_ns()
+        print(f"Num means: {len(means)}")
         pixel_groups_by_mean = group_pixels_by_means(means, pixels)
         # Remove any means with no associated pixel groups
         if any(p.size == 0 for p in pixel_groups_by_mean):
@@ -151,17 +154,21 @@ def kmeans(pixels: NDArray[Pixel], config: RawConfigParser) -> dict[tuple[int, i
                     p.append(group)
             means, pixel_groups_by_mean = m, p
             y = len(pixel_groups_by_mean)
-            print(f"Removed {x - y} empty groups")
+            print(f"Removed {x - y} empty groups", file=sys.stderr)
         old_means = means
         means = np.array([mean_of_pixels(group) for group in pixel_groups_by_mean])
         if show_mean_charts:
-            save_mean_chart(means, pixel_groups_by_mean)
+            save_mean_chart(means, pixel_groups_by_mean, crop_mean_charts=crop_mean_charts)
         t2 = perf_counter_ns()
         print(f"Finished kmeans loop in {(t2 - t1) / 1000:,} us")
         if are_pixels_within_distance(old_means, means, max_distance=max_distance):
+            if not pruning_distance:
+                break
+            # Prune any means that are too close together and keep running kmeans as needed
             old_means = means
-
-            break
+            means, pixel_groups_by_mean = prune_means(means, pixel_groups_by_mean, pruning_distance)
+            if np.array_equal(old_means, means):
+                break
     if show_mean_charts:
         show_mean_chart()
     return {pixel_to_tuple(new_mean): pixel_group for new_mean, pixel_group in zip(means, pixel_groups_by_mean)}
@@ -175,10 +182,8 @@ def create_random_pixels(n: int) -> NDArray[Pixel]:
 def group_pixels_by_means(means: NDArray[Pixel], pixels: NDArray[Pixel]) -> list[NDArray[Pixel]]:
     # Calculate the squared Euclidean distance between each vector in b and each vector in a
     distances = np.linalg.norm(pixels[:, np.newaxis] - means, axis=2)
-
     # Find the index of the minimum distance for each vector in pixels
     closest_indices = np.argmin(distances, axis=1)
-
     return [pixels[np.where(closest_indices == i)] for i in range(len(means))]
 
 
@@ -189,7 +194,7 @@ def mean_of_pixels(array_of_pixels: NDArray[Pixel]) -> Pixel:
 def are_pixels_within_distance(pixels_a: np.ndarray, pixels_b: np.ndarray, max_distance: float) -> bool:
     # Calculate the Euclidean distances between corresponding pixels
     distances = np.linalg.norm(pixels_a - pixels_b, axis=1)
-    print(f"Distances: {distances}")
+    # print(f"Distances: {distances}")
     # Check if all distances are within the max_distance
     return np.all(distances <= max_distance)
 
@@ -229,14 +234,15 @@ def prune_means(
     if len(means) == len(mean_groups):
         return means, pixel_groups
 
+    print(mean_groups)
     # For each group, find the array to keep based on the largest corresponding array in pixel_groups
-    arrays_to_keep = []
+    arrays_to_keep = set()
     for group in mean_groups:
         max_index = max(group, key=lambda idx: len(pixel_groups[idx]))
-        arrays_to_keep.append(max_index)
+        arrays_to_keep.add(max_index)
 
     # Sort `arrays_to_keep` to keep original order of means
-    arrays_to_keep.sort()
+    arrays_to_keep = sorted(arrays_to_keep)
 
     # Delete all arrays except the ones to keep
     final_means = np.array([means[i] for i in arrays_to_keep])
@@ -247,7 +253,10 @@ def prune_means(
 mean_charts = []
 
 
-def save_mean_chart(means: NDArray[Pixel], pixels: list[NDArray[Pixel]], mean_radius=3, pixel_radius=1):
+def save_mean_chart(
+        means: NDArray[Pixel], pixels: list[NDArray[Pixel]], mean_radius: int = 3, pixel_radius: int = 1,
+        crop_mean_charts: bool = False
+):
     global mean_charts
     mean_colors = ("red", "green", "blue", "orange", "yellow", "pink", "purple", "cyan", "magenta", "brown")
     # Create a blank image with white background
@@ -257,6 +266,7 @@ def save_mean_chart(means: NDArray[Pixel], pixels: list[NDArray[Pixel]], mean_ra
     def draw_pixel(draw: ImageDraw.Draw, pixel: Pixel, color: tuple[int, int, int], radius: int):
         # Just use x and y for 2D map
         x, y, _ = pixel
+        x, y = int(x), int(y)
         if radius == 0:
             draw.pixel((x, y), fill=color)
         else:
@@ -266,19 +276,28 @@ def save_mean_chart(means: NDArray[Pixel], pixels: list[NDArray[Pixel]], mean_ra
                         max(x - radius, 0),
                         max(y - radius, 0),
                         min(x + radius, 255),
-                        min(y + radius, 255)
+                        min(y + radius, 255),
                     ),
                     fill=color,
                 )
             except ValueError as e:
-                print(e)
+                print(f"{e}: ({x}, {y})", file=sys.stderr)
 
     # Project 3D pixels to 2D (ignore z-coordinate for simplicity)
+    min_x, min_y, max_x, max_y = 255, 255, 0, 0
     for i, mean in enumerate(means):
         color = mean_colors[i]
         for pixel in pixels[i]:
+            x, y, _ = pixel
+            min_x, min_y, max_x, max_y = min(x, min_x), min(y, min_y), max(x, max_x), max(y, max_y)
             draw_pixel(draw, pixel, color, pixel_radius)
         draw_pixel(draw, mean, color, mean_radius)
+
+    if crop_mean_charts:
+        # Crop image down to reduce unused whitespace
+        min_x, min_y = max(0,   int(min_x) - 10), max(0,   int(min_y) - 10)
+        max_x, max_y = min(255, int(max_x) + 10), min(255, int(max_y) + 10)
+        image = image.crop((min_x, min_y, max_x, max_y))
 
     image = image.resize((255 * 2, 255 * 2))
     mean_charts.append(image)
@@ -314,8 +333,8 @@ def pixel_to_tuple(pixel: Pixel) -> tuple[int, int, int]:
 
 def sort_means(means: dict[tuple[int, int, int], NDArray[Pixel]]) -> list[tuple[int, int, int]]:
     items = means.items()
-    for mean, pixel_group in items:
-        print(f"{mean}: {len(pixel_group)}")
+    # for mean, pixel_group in items:
+    #     print(f"{mean}: {len(pixel_group)}")
     s = sorted(items, key=lambda x: len(x[1]), reverse=True)
     return [x[0] for x in s]
 

@@ -25,15 +25,19 @@ Text fill = yellow
 Stroke width = 2
 Stroke fill = black
 
+[Kmeans]
+White exclusion threshold = 100
+Subsample size = 1000
+Cluster size = 10
+Max iterations = 20
+Distance threshold = 5.0
+Pruning distance = 20.0
+Show clustering charts = false
+Crop clustering charts = false
+
 [Advanced]
 # Don't mess with these unless you know what you're doing
 Temp image filename = wallpaper
 Deleted image path = deleted_wallpaper
 Icon path = icon.png
 Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg
-White exclusion threshold = 100
-Kmeans subsample size = 1000
-Kmeans cluster size = 5
-Kmeans max iterations = 10
-Kmeans distance threshold = 5.0
-Show kmeans clustering charts = False
