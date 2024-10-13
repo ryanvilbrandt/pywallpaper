@@ -108,17 +108,18 @@ class Db:
         """
         return self._scalar(sql)
 
-    def get_random_image(self) -> str:
+    def get_random_image(self, increment: bool = True) -> str:
         sql = f"""
         SELECT filepath FROM {self.table} WHERE active=1 AND is_directory=0 ORDER BY RANDOM() LIMIT 1;
         """
         result = self._fetch_one(sql)
         filepath = result["filepath"]
-        self.increment_times_used(filepath)
+        if increment:
+            self.increment_times_used(filepath)
         self.normalize_times_used()
         return filepath
 
-    def get_random_image_v2(self) -> str:
+    def get_random_image_v2(self, increment: bool = True) -> str:
         if self.ids is None:
             sql = f"""
             SELECT id FROM {self.table} WHERE active=1 AND is_directory=0;
@@ -129,11 +130,12 @@ class Db:
         """
         result = self._fetch_one(sql, [choice(self.ids)[0]])
         filepath = result["filepath"]
-        self.increment_times_used(filepath)
+        if increment:
+            self.increment_times_used(filepath)
         self.normalize_times_used()
         return filepath
 
-    def get_random_image_with_weighting(self) -> str:
+    def get_random_image_with_weighting(self, increment: bool = True) -> str:
         # Get all images and the times they've been used
         sql = f"""
         SELECT filepath, times_used 
@@ -148,11 +150,12 @@ class Db:
         weights = [max_times_used - w + 1 for w in times_used]
         # Pick a random image with the generated weights
         filepath = choices(filepaths, weights=weights)[0]
-        self.increment_times_used(filepath)
+        if increment:
+            self.increment_times_used(filepath)
         self.normalize_times_used()
         return filepath
 
-    def get_random_image_from_least_used(self) -> str:
+    def get_random_image_from_least_used(self, increment: bool = True) -> str:
         # Get all images and the times they've been used
         sql = f"""
         SELECT filepath, times_used 
@@ -167,8 +170,9 @@ class Db:
         # Get the least used images and pick a random image from that
         least_times_used = min(weights_dict)
         filepath = choice(weights_dict[least_times_used])
-        # Increase the counter for how many times this image has been used and return
-        self.increment_times_used(filepath)
+        if increment:
+            # Increase the counter for how many times this image has been used and return
+            self.increment_times_used(filepath)
         self.normalize_times_used()
         return filepath
 

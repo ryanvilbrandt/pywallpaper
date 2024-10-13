@@ -254,6 +254,7 @@ class PyWallpaper(wx.Frame):
 
     def pick_new_wallpaper(self):
         test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback="").strip('"')
+        test_mode = bool(test_wallpaper)
         if test_wallpaper:
             self.set_wallpaper(test_wallpaper)
             return
@@ -265,11 +266,11 @@ class PyWallpaper(wx.Frame):
             t1 = time.perf_counter_ns()
             algorithm = self.config.get("Settings", "Random algorithm").lower()
             if algorithm == "pure":
-                self.original_file_path = db.get_random_image()
+                self.original_file_path = db.get_random_image(increment=not test_mode)
             elif algorithm == "weighted":
-                self.original_file_path = db.get_random_image_with_weighting()
+                self.original_file_path = db.get_random_image_with_weighting(increment=not test_mode)
             elif algorithm == "least used":
-                self.original_file_path = db.get_random_image_from_least_used()
+                self.original_file_path = db.get_random_image_from_least_used(increment=not test_mode)
             else:
                 raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
             t2 = time.perf_counter_ns()
