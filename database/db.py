@@ -146,7 +146,7 @@ class Db:
         # Invert times_used, so we can use it as weights
         max_times_used = max(times_used)
         weights = [max_times_used - w + 1 for w in times_used]
-        # Get pick a random image with the generated weights
+        # Pick a random image with the generated weights
         filepath = choices(filepaths, weights=weights)[0]
         self.increment_times_used(filepath)
         self.normalize_times_used()
