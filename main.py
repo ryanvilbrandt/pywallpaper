@@ -302,6 +302,8 @@ class PyWallpaper(wx.Frame):
     def make_image(self, file_path: str) -> str:
         # Open image
         img = Image.open(file_path)
+        if img.mode == "P":
+            img = img.convert("RGBA")
         # Resize and apply to background
         img = self.resize_image_to_bg(
             img,
@@ -528,7 +530,7 @@ class PyWallpaper(wx.Frame):
         self.settings["bottom_padding"] = self.bottom_padding.GetValue()
         print(self.settings)
         self.save_settings()
-        img = self.resize_image_to_bg(None, "black", "", "white")
+        img = self.resize_image_to_bg(None, "red", "", "white")
         # Write to temp file
         temp_file_path = self.temp_image_filename + ".png"
         img.save(temp_file_path)
