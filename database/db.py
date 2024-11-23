@@ -2,7 +2,7 @@ import json
 import sqlite3
 from collections import OrderedDict, defaultdict
 from random import choice, choices
-from sqlite3 import Cursor
+from sqlite3 import Cursor, OperationalError
 from typing import Optional, Iterator, Union, Sequence
 
 
@@ -64,6 +64,46 @@ class Db:
     def _fetch_all(self, sql, params=None) -> Iterator[dict]:
         for row in self._execute(sql, params).fetchall():
             yield self._row_to_dict(row)
+
+    # MIGRATIONS
+
+    def migrate(self):
+        version = self.get_version()
+        if version < 1:
+            self.version1()
+        if version < 2:
+            self.version2()
+
+    def get_version(self) -> int:
+        sql = "SELECT version FROM version;"
+        try:
+            return self._fetch_one(sql)["version"]
+        except OperationalError:
+            # No table found, return version=0
+            return 0
+
+    def version1(self):
+        sql = """
+        CREATE TABLE IF NOT EXISTS version (
+            version INTEGER
+        );
+        INSERT INTO version (version) VALUES (1);
+        """
+        self.cur.executescript(sql)
+
+    def version2(self):
+        image_tables = self.get_image_tables()
+        for table_name in image_tables:
+            sql = f"""
+            ALTER TABLE images_{table_name}
+            ADD COLUMN total_times_used INTEGER DEFAULT 0;
+            UPDATE images_{table_name} SET total_times_used=times_used;
+            """
+            self.cur.executescript(sql)
+        sql = """
+        UPDATE version SET version=2;
+        """
+        self._execute(sql)
 
     # IMAGES
 
@@ -179,8 +219,9 @@ class Db:
     def increment_times_used(self, filepath: str) -> None:
         # TODO add normalization of times_used values
         sql = f"""
-        UPDATE {self.table} 
-        SET times_used = times_used + 1 
+        UPDATE {self.table}
+        SET times_used = times_used + 1,
+            total_times_used = total_times_used + 1
         WHERE filepath=?;
         """
         self.cur.execute(sql, [filepath])

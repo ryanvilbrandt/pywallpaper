@@ -53,6 +53,7 @@ class PyWallpaper(wx.Frame):
 
     def __init__(self, debug: bool = False):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
+        self.migrate_db()
         self.load_config()
         self.load_gui(debug)
 
@@ -66,6 +67,11 @@ class PyWallpaper(wx.Frame):
         if not selected_file_list or selected_file_list == "<Add new file list>":
             self.file_list_dropdown.SetValue("default")
         self.select_file_list(None)
+
+    @staticmethod
+    def migrate_db():
+        with Db() as db:
+            db.migrate()
 
     def load_config(self):
         c = ConfigParser()
