@@ -39,6 +39,11 @@ class Db:
 
     def _row_to_dict(self, row) -> dict:
         d = OrderedDict()
+        if self.cur.description is None:
+            raise TypeError(
+                "Cursor description is None. Did you make another DB query while iterating through "
+                "a fetchall, perchance?"
+            )
         for i, col in enumerate(self.cur.description):
             d[col[0]] = row[i]
         return d
