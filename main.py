@@ -646,10 +646,12 @@ class PyWallpaper(wx.Frame):
         with Db(table=self.table_name) as db:
             folders = list(db.get_active_folders())
             for folder in folders:
-                # TODO Add refresh for eagle folders as well
-                if not folder["is_eagle_directory"]:
-                    print(f"Refreshing ephemeral images for {folder['filepath']}")
+                print(f"Refreshing ephemeral images for {folder['filepath']}")
+                if folder["is_eagle_directory"]:
+                    file_paths = self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
+                else:
                     file_paths = self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
+                if file_paths:
                     db.add_images(file_paths, ephemeral=True)
         self.last_ephemeral_image_refresh = time.time()
 
