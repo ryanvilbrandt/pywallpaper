@@ -7,7 +7,6 @@ import subprocess
 import sys
 import threading
 import time
-import winreg
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from glob import glob
@@ -46,6 +45,7 @@ class PyWallpaper(wx.Frame):
     cycle_timer = None
     observer, event_handlers = None, {}
     processing_eagle = None
+    last_ephemeral_image_refresh = 0
 
     # GUI Elements
     icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
@@ -238,6 +238,7 @@ class PyWallpaper(wx.Frame):
 
     # Loop functions
     def run(self):
+        self.refresh_ephemeral_images()
         self.cycle_timer = wx.Timer()
         self.cycle_timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
         self.trigger_image_loop(None)
@@ -283,6 +284,8 @@ class PyWallpaper(wx.Frame):
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
         self.original_file_path = self.original_file_path.replace("/", "\\")
         self.set_wallpaper(self.original_file_path)
+
+        self.refresh_ephemeral_images()
 
     def set_wallpaper(self, filepath):
         print(f"Loading {filepath}")
@@ -634,6 +637,21 @@ class PyWallpaper(wx.Frame):
         with wx.MessageDialog(self, message, "Error" if title is None else title,
                               style=wx.OK | wx.ICON_ERROR) as dialog:
             dialog.ShowModal()
+
+    def refresh_ephemeral_images(self, force_refresh=False):
+        # Check ephemeral image refresh delay first, and end early if we need to wait longer.
+        delay = self.config.getint("Advanced", "Ephemeral image refresh delay", fallback=600)
+        if not force_refresh and self.last_ephemeral_image_refresh + delay > time.time():
+            return
+        with Db(table=self.table_name) as db:
+            folders = list(db.get_active_folders())
+            for folder in folders:
+                # TODO Add refresh for eagle folders as well
+                if not folder["is_eagle_directory"]:
+                    print(f"Refreshing ephemeral images for {folder['filepath']}")
+                    file_paths = self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
+                    db.add_images(file_paths, ephemeral=True)
+        self.last_ephemeral_image_refresh = time.time()
 
     def get_file_list_in_folder(self, dir_path: str, include_subfolders: bool) -> Sequence[str]:
         file_paths = []
