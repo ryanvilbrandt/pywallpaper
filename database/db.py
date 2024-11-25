@@ -113,6 +113,7 @@ class Db:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filepath TEXT UNIQUE,
             times_used INTEGER DEFAULT 0,
+            total_times_used INTEGER DEFAULT 0,
             active BOOLEAN DEFAULT TRUE,
             is_directory BOOLEAN DEFAULT FALSE,
             include_subdirectories BOOLEAN DEFAULT FALSE,
