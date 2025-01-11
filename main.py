@@ -27,7 +27,7 @@ from watchdog.observers import Observer
 import kmeans
 from database.db import Db
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 SPI_SET_DESKTOP_WALLPAPER = 0x14
 
 
