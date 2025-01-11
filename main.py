@@ -37,6 +37,7 @@ class PyWallpaper(wx.Frame):
     table_name = None
     delay = None
     error_delay = None
+    enable_ephemeral_refresh, ephemeral_refresh_delay = None, None
     font = None
     temp_image_filename = None
 
@@ -49,7 +50,8 @@ class PyWallpaper(wx.Frame):
 
     # GUI Elements
     icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
-    left_padding, right_padding, top_padding, bottom_padding = None, None, None, None
+    left_padding, right_padding, top_padding, bottom_padding, use_padding_test_checkbox = None, None, None, None, None
+    ephemeral_refresh_value, ephemeral_refresh_dropdown, enable_ephemeral_refresh_checkbox = None, None, None
 
     def __init__(self, debug: bool = False):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
@@ -57,8 +59,9 @@ class PyWallpaper(wx.Frame):
         self.load_config()
         self.load_gui(debug)
 
-        # Set image delay from GUI element
+        # Set delays from GUI elements
         self.set_delay(None)
+        self.set_ephemeral_refresh_delay(None)
 
         # Set dropdown to saved file list
         self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
@@ -103,6 +106,9 @@ class PyWallpaper(wx.Frame):
                 self.settings = json.load(f)
         else:
             self.settings = {}
+
+        # Load some required values from settings
+        self.enable_ephemeral_refresh = self.settings.get("enable_ephemeral_refresh", True)
 
     def save_settings(self):
         with open("settings.json", "w") as f:
@@ -176,15 +182,31 @@ class PyWallpaper(wx.Frame):
         add_eagle_folder_button = wx.Button(p, label="Add Eagle Folder to Wallpaper List")
         add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
 
+        self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
+        self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
+
         self.left_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("left_padding", 0))
         self.right_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("right_padding", 0))
         self.top_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("top_padding", 0))
         self.bottom_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("bottom_padding", 0))
-        test_padding_button = wx.Button(p, label="Show Padding Test Wallpaper")
-        test_padding_button.Bind(wx.EVT_BUTTON, self.show_padding_test_wallpaper)
+        apply_padding_button = wx.Button(p, label="Apply Padding Changes")
+        apply_padding_button.Bind(wx.EVT_BUTTON, self.apply_padding)
+        self.use_padding_test_checkbox = wx.CheckBox(p, label="Show test wallpaper when applying padding changes?")
+        self.use_padding_test_checkbox.SetValue(False)
 
-        self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
-        self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
+        self.ephemeral_refresh_value = wx.SpinCtrl(
+            p, min=0, max=10000, initial=self.settings.get("ephemeral_refresh_delay_value", 10)
+        )
+        self.ephemeral_refresh_value.Bind(wx.EVT_SPINCTRL, self.set_ephemeral_refresh_delay)
+        self.ephemeral_refresh_value.Bind(wx.EVT_TEXT, self.set_ephemeral_refresh_delay)
+        self.ephemeral_refresh_dropdown = wx.ComboBox(
+            p, choices=["seconds", "minutes", "hours"], style=wx.CB_READONLY
+        )
+        self.ephemeral_refresh_dropdown.SetValue(self.settings.get("ephemeral_refresh_delay_unit", "minutes"))
+        self.ephemeral_refresh_dropdown.Bind(wx.EVT_COMBOBOX, self.set_ephemeral_refresh_delay)
+        self.enable_ephemeral_refresh_checkbox = wx.CheckBox(p, label="Enable periodic rescan of folders?")
+        self.enable_ephemeral_refresh_checkbox.SetValue(self.settings.get("enable_ephemeral_refresh", True))
+        self.enable_ephemeral_refresh_checkbox.Bind(wx.EVT_CHECKBOX, self.set_enable_ephemeral_refresh)
 
         # Create a sizer to manage the layout of child widgets
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -217,10 +239,21 @@ class PyWallpaper(wx.Frame):
             (self.bottom_padding, wx.SizerFlags()),
         ])
         sizer.Add(border_sizer, wx.SizerFlags().Border(wx.TOP, 5))
-        sizer.Add(test_padding_button, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
+        sizer.Add(apply_padding_button, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
+        sizer.Add(self.use_padding_test_checkbox, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
+
+        ephemeral_refresh_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        ephemeral_refresh_sizer.Add(
+            wx.StaticText(p, label=f'Rescan folders delay:'),
+            wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3),
+        )
+        ephemeral_refresh_sizer.Add(self.ephemeral_refresh_value, wx.SizerFlags().Border(wx.RIGHT, 3))
+        ephemeral_refresh_sizer.Add(self.ephemeral_refresh_dropdown)
+        sizer.Add(ephemeral_refresh_sizer, wx.SizerFlags().Border(wx.TOP, 10))
+        sizer.Add(self.enable_ephemeral_refresh_checkbox, wx.SizerFlags().Border(wx.TOP, 5))
 
         outer_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        outer_sizer.Add(sizer, wx.SizerFlags().Border(wx.LEFT | wx.RIGHT, 10))
+        outer_sizer.Add(sizer, wx.SizerFlags().Border(wx.LEFT | wx.RIGHT | wx.BOTTOM, 10))
 
         p.SetSizerAndFit(outer_sizer)
         self.Fit()
@@ -238,7 +271,7 @@ class PyWallpaper(wx.Frame):
 
     # Loop functions
     def run(self):
-        self.refresh_ephemeral_images()
+        self.refresh_ephemeral_images(force_refresh=True)
         self.cycle_timer = wx.Timer()
         self.cycle_timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
         self.trigger_image_loop(None)
@@ -426,16 +459,6 @@ class PyWallpaper(wx.Frame):
             return False
         self.create_windows_event_log("Setting wallpaper to {}".format(path))
         ctypes.windll.user32.SystemParametersInfoW(SPI_SET_DESKTOP_WALLPAPER, 0, path, 0)
-        # winreg.SetValueEx(
-        #     winreg.OpenKey(
-        #         winreg.HKEY_CURRENT_USER,
-        #         "Control Panel\\Desktop",
-        #         0, winreg.KEY_SET_VALUE),
-        #     "Wallpaper",
-        #     0,
-        #     winreg.REG_SZ,
-        #     path,
-        # )
         return True
 
     @staticmethod
@@ -532,18 +555,37 @@ class PyWallpaper(wx.Frame):
             self.settings["delay_unit"] = unit
             self.save_settings()
 
-    def show_padding_test_wallpaper(self, _event):
+    def set_enable_ephemeral_refresh(self, _event):
+        value = self.enable_ephemeral_refresh_checkbox.GetValue()
+        self.enable_ephemeral_refresh = value
+        self.settings["enable_ephemeral_refresh"] = value
+        self.save_settings()
+
+    def set_ephemeral_refresh_delay(self, _event):
+        value = self.ephemeral_refresh_value.GetValue()
+        units = {"seconds": 1, "minutes": 60, "hours": 3600}
+        unit = self.ephemeral_refresh_dropdown.GetValue()
+        self.ephemeral_refresh_delay = value * units[unit]  # seconds
+        print(self.ephemeral_refresh_delay)
+        if _event:
+            self.settings["ephemeral_refresh_delay_value"] = value
+            self.settings["ephemeral_refresh_delay_unit"] = unit
+            self.save_settings()
+
+    def apply_padding(self, _event):
         self.settings["left_padding"] = self.left_padding.GetValue()
         self.settings["right_padding"] = self.right_padding.GetValue()
         self.settings["top_padding"] = self.top_padding.GetValue()
         self.settings["bottom_padding"] = self.bottom_padding.GetValue()
-        print(self.settings)
         self.save_settings()
-        img = self.resize_image_to_bg(None, "red", "", "white")
-        # Write to temp file
-        temp_file_path = self.temp_image_filename + ".png"
-        img.save(temp_file_path)
-        self.set_desktop_wallpaper(temp_file_path)
+        if self.use_padding_test_checkbox.GetValue():
+            img = self.resize_image_to_bg(None, "red", "", "white")
+            # Write to temp file
+            temp_file_path = self.temp_image_filename + ".png"
+            img.save(temp_file_path)
+            self.set_desktop_wallpaper(temp_file_path)
+        else:
+            self.set_wallpaper(self.original_file_path)
 
     @staticmethod
     def normalize_file_list_name(name):
@@ -640,9 +682,11 @@ class PyWallpaper(wx.Frame):
 
     def refresh_ephemeral_images(self, force_refresh=False):
         # Check ephemeral image refresh delay first, and end early if we need to wait longer.
-        delay = self.config.getint("Advanced", "Ephemeral image refresh delay", fallback=600)
-        if not force_refresh and self.last_ephemeral_image_refresh + delay > time.time():
-            return
+        if not force_refresh:
+            if not self.enable_ephemeral_refresh:
+                return
+            if self.last_ephemeral_image_refresh + self.ephemeral_refresh_delay > time.time():
+                return
         with Db(table=self.table_name) as db:
             folders = list(db.get_active_folders())
             for folder in folders:
