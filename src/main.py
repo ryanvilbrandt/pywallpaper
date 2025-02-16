@@ -27,7 +27,7 @@ from database.db import Db
 from src import utils
 from src.image_utils import get_common_color, has_transparency
 
-VERSION = "0.3.3"
+VERSION = "0.4.0"
 SPI_SET_DESKTOP_WALLPAPER = 0x14
 
 
