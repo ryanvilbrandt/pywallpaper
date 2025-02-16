@@ -7,9 +7,9 @@ import numpy as np
 from PIL import Image
 from numpy._typing import NDArray
 
-from src.image_utils import convert_image_to_pixels, subsample, exclude_pixels_near_white, Pixel, pixels_to_tuples, \
+from image_utils import convert_image_to_pixels, subsample, exclude_pixels_near_white, Pixel, pixels_to_tuples, \
     downscale_image, sort_means
-from src.utils import perf, print_perf, load_config
+from utils import perf, print_perf, load_config
 
 
 def get_common_colors_from_image(

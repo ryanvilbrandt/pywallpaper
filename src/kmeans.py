@@ -8,9 +8,9 @@ import numpy as np
 from PIL import Image, ImageDraw
 from numpy.typing import NDArray
 
-from src.image_utils import convert_image_to_pixels, exclude_pixels_near_white, subsample, Pixel, pixel_to_tuple, \
+from image_utils import convert_image_to_pixels, exclude_pixels_near_white, subsample, Pixel, pixel_to_tuple, \
     sort_means, pixels_to_tuples, downscale_image
-from src.utils import perf, print_perf
+from utils import perf, print_perf
 
 
 def get_common_colors_from_image(img: Image, config: RawConfigParser) -> list[tuple[int, int, int]]:

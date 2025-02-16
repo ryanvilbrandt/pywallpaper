@@ -23,9 +23,9 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from database.db import Db
-from src import utils
-from src.image_utils import get_common_color, has_transparency
+from db import Db
+import utils
+from image_utils import get_common_color, has_transparency
 
 VERSION = "0.4.0"
 SPI_SET_DESKTOP_WALLPAPER = 0x14
@@ -436,12 +436,12 @@ class PyWallpaper(wx.Frame):
             nonlocal kmean_common_colors, mean_shift_common_colors
             if "kmean" in config_value:
                 if kmean_common_colors is None:
-                    from src import kmeans
+                    import kmeans
                     kmean_common_colors = kmeans.get_common_colors_from_image(img, self.config)
                 return get_common_color(kmean_common_colors, config_value)
             if "mean_shift" in config_value:
                 if mean_shift_common_colors is None:
-                    from src import mean_shift
+                    import mean_shift
                     mean_shift_common_colors = mean_shift.get_common_colors_from_image(img, self.config)
                 return get_common_color(mean_shift_common_colors, config_value)
             return bg_color
