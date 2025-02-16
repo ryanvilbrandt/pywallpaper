@@ -26,8 +26,11 @@ Stroke width = 2
 Stroke fill = black
 
 [Kmeans]
+# 0 = Skip downscaling
+Max dimension for downscaling = 500
+# 0 = Skip subsampling
+Subsample size = 0
 White exclusion threshold = 100
-Subsample size = 1000
 Cluster size = 10
 Max iterations = 20
 Distance threshold = 5.0
@@ -35,9 +38,19 @@ Pruning distance = 20.0
 Show clustering charts = false
 Crop clustering charts = false
 
+[Mean Shift]
+# 0 = Skip downscaling
+Max dimension for downscaling = 500
+# 0 = Skip subsampling
+Subsample size = 0
+White exclusion threshold = 100
+Radius = 30
+Tolerance = 0.001
+Max Iterations = 100
+
 [Advanced]
 # Don't mess with these unless you know what you're doing
 Temp image filename = wallpaper
 Deleted image path = deleted_wallpaper
-Icon path = icon.png
+Icon path = resources/icon.png
 Image types = jpg, jpeg, png, gif, bmp, webp, webm, tiff, svg

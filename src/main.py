@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 from argparse import ArgumentParser
-from configparser import ConfigParser
 from glob import glob
 from io import BytesIO
 from json import JSONDecodeError
@@ -24,8 +23,9 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-import kmeans
 from database.db import Db
+from src import utils
+from src.image_utils import get_common_color, has_transparency
 
 VERSION = "0.3.3"
 SPI_SET_DESKTOP_WALLPAPER = 0x14
@@ -77,10 +77,7 @@ class PyWallpaper(wx.Frame):
             db.migrate()
 
     def load_config(self):
-        c = ConfigParser()
-        if not os.path.isfile("config.ini"):
-            shutil.copy("config.ini.dist", "config.ini")
-        c.read("config.ini")
+        c = utils.load_config()
         self.config = c
 
         self.error_delay = int(self.parse_timestring(c.get("Settings", "Error delay")) * 1000)
@@ -101,8 +98,8 @@ class PyWallpaper(wx.Frame):
         )
 
         # Load settings file
-        if os.path.isfile("settings.json"):
-            with open("settings.json", "r") as f:
+        if os.path.isfile("conf/settings.json"):
+            with open("conf/settings.json", "r") as f:
                 self.settings = json.load(f)
         else:
             self.settings = {}
@@ -111,7 +108,7 @@ class PyWallpaper(wx.Frame):
         self.enable_ephemeral_refresh = self.settings.get("enable_ephemeral_refresh", True)
 
     def save_settings(self):
-        with open("settings.json", "w") as f:
+        with open("conf/settings.json", "w") as f:
             json.dump(self.settings, f)
 
     @staticmethod
@@ -378,19 +375,17 @@ class PyWallpaper(wx.Frame):
             monitor_width, monitor_height = [int(x) for x in force_monitor_size.split(", ")]
         else:
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
-        if "kmean" in bg_color or "kmean" in border_color or "kmean" in padding_color:
-            common_colors = kmeans.get_common_colors_from_image(img, self.config)
-            if "kmean" in bg_color:
-                bg_color = kmeans.get_common_color(common_colors, bg_color)
-            if "kmean" in border_color:
-                border_color = kmeans.get_common_color(common_colors, border_color)
-            if "kmean" in padding_color:
-                padding_color = kmeans.get_common_color(common_colors, padding_color)
+
+        bg_color, border_color, padding_color = self.get_bg_border_padding_colors(
+            img, bg_color, border_color, padding_color
+        )
+
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
         left_padding = self.settings.get("left_padding", 0)
         right_padding = self.settings.get("right_padding", 0)
         top_padding = self.settings.get("top_padding", 0)
         bottom_padding = self.settings.get("bottom_padding", 0)
+
         if img:
             # Determine aspect ratios
             image_aspect_ratio = img.width / img.height
@@ -420,7 +415,8 @@ class PyWallpaper(wx.Frame):
                     fill=border_color
                 )
             # Paste image on BG
-            bg.paste(img, (paste_x, paste_y), img if kmeans.has_transparency(img) else None)
+            bg.paste(img, (paste_x, paste_y), img if has_transparency(img) else None)
+
         # Add padding after image, to cover up border
         if padding_color:
             if left_padding:
@@ -432,6 +428,29 @@ class PyWallpaper(wx.Frame):
             if bottom_padding:
                 bg.paste(Image.new("RGB", (bg.width, bottom_padding), padding_color), (0, bg.height - bottom_padding))
         return bg
+
+    def get_bg_border_padding_colors(self, img: Image, bg_color: str, border_color: str = "", padding_color: str = ""):
+        kmean_common_colors, mean_shift_common_colors = None, None
+
+        def get_color_by_mode(config_value: str):
+            nonlocal kmean_common_colors, mean_shift_common_colors
+            if "kmean" in config_value:
+                if kmean_common_colors is None:
+                    from src import kmeans
+                    kmean_common_colors = kmeans.get_common_colors_from_image(img, self.config)
+                return get_common_color(kmean_common_colors, config_value)
+            if "mean_shift" in config_value:
+                if mean_shift_common_colors is None:
+                    from src import mean_shift
+                    mean_shift_common_colors = mean_shift.get_common_colors_from_image(img, self.config)
+                return get_common_color(mean_shift_common_colors, config_value)
+            return bg_color
+
+        bg_color = get_color_by_mode(bg_color)
+        border_color = get_color_by_mode(border_color)
+        padding_color = get_color_by_mode(padding_color)
+
+        return bg_color, border_color, padding_color
 
     def add_text_to_image(self, img: Image, text: str):
         draw = ImageDraw.Draw(img)
