@@ -42,7 +42,6 @@ class KeybindListener:
         self.pressed_keys.add(normalized_key)
         # print(self.pressed_keys)
         if self.pressed_keys == self.keybind_set:
-            print("Do the thing!!!")
             print(self.format_keybind_combination(self.pressed_keys))
             self.callback(self.pressed_keys)
 
@@ -54,7 +53,8 @@ class KeybindListener:
             return self.listener.canonical(key)
         return key
 
-    def parse_keybind_combination(self, keybind: str) -> set[Key | KeyCode]:
+    @staticmethod
+    def parse_keybind_combination(keybind: str) -> set[Key | KeyCode]:
         """
         Converts a string keybind to a set of pynput keys.
         """

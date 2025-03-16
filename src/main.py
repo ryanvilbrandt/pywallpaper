@@ -27,7 +27,7 @@ import utils
 from db import Db
 from image_utils import get_common_color, has_transparency
 from keybind_listener import KeybindListener
-from src import VERSION
+from version import VERSION
 
 SPI_SET_DESKTOP_WALLPAPER = 0x14
 
