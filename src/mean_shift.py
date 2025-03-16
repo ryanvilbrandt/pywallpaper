@@ -97,7 +97,6 @@ def mean_shift_with_removal(
             cluster_centers[tuple(center)] += np.sum(within_radius)
             # Remove assigned points from `points`
             points = points[~within_radius]  # Keep only points that are NOT within radius
-    perf("Find clusters:")
     print("Done finding clusters")
 
     return cluster_centers
