@@ -271,9 +271,18 @@ class PyWallpaper(wx.Frame):
             return
 
         self.keybind_listener.register_callback(
-            self.settings.get("advance_image_keybind", "cmd+shift+right"),
-            self.trigger_image_loop,
+            self.settings.get("previous_image_keybind", "cmd+shift+left"),
+            lambda: wx.CallAfter(self.show_previous_image),
         )
+        self.keybind_listener.register_callback(
+            self.settings.get("next_image_keybind", "cmd+shift+right"),
+            lambda: wx.CallAfter(self.trigger_image_loop),
+        )
+        self.keybind_listener.register_callback(
+            self.settings.get("delete_image_keybind", "cmd+shift+delete"),
+            lambda: wx.CallAfter(self.delete_image),
+        )
+
         self.keybind_listener.start()
 
     def make_images_table(self):
@@ -289,7 +298,7 @@ class PyWallpaper(wx.Frame):
         self.run_icon_loop()
         self.run_watchdog()
 
-    def trigger_image_loop(self, _event):
+    def trigger_image_loop(self, _event=None):
         self.cycle_timer.Stop()
 
         with Db(table=self.table_name) as db:
@@ -503,7 +512,7 @@ class PyWallpaper(wx.Frame):
             strings=[message],
         )
 
-    def show_previous_image(self, _event):
+    def show_previous_image(self, _event=None):
         if not self.file_path_history:
             msg = "No previous images in history."
             with wx.MessageDialog(self, msg, "Empty history list") as dialog:
@@ -831,7 +840,7 @@ class PyWallpaper(wx.Frame):
             db.set_image_to_inactive(self.original_file_path)
         self.advance_image(_icon, _item)
 
-    def delete_image(self, _icon, _item):
+    def delete_image(self, _icon=None, _item=None):
         path = self.original_file_path
         title, message = "Delete image?", f"Are you sure you want to delete {path}"
         with wx.MessageDialog(self, message, title, style=wx.ICON_WARNING | wx.YES_NO) as messageDialog:
