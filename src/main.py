@@ -26,8 +26,8 @@ from watchdog.observers import Observer
 from db import Db
 import utils
 from image_utils import get_common_color, has_transparency
+from src import VERSION
 
-VERSION = "0.4.0"
 SPI_SET_DESKTOP_WALLPAPER = 0x14
 
 
