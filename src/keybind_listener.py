@@ -10,14 +10,10 @@ class KeybindListener:
 
     listener: keyboard.Listener = None
     pressed_keys: set[Key | KeyCode] = set()
-    keybind_set: set[Key | KeyCode] = set()
-    callback: callable = None
+    callbacks: list[tuple[set, callable]] = []
 
     def __init__(self):
         """
-        :param keybind_string: The string representation of the keybinding to listen for. E.g. "ctrl+shift+a"
-        :param callback: The function to call when the specified keybinding is triggered. Must take one argument,
-            the set of Key and KeyCode objects representing the pressed keys.
         :raises ImportError: If the `pynput` library is not installed.
         """
         if keyboard is None:
@@ -28,11 +24,16 @@ class KeybindListener:
         )
 
     def register_callback(self, keybind_string: str, callback: callable):
-        self.keybind_set = self.parse_keybind_combination(keybind_string)
-        self.callback = callback
+        """
+        :param keybind_string: The string representation of the keybinding to listen for. E.g. "ctrl+shift+a"
+        :param callback: The function to call when the specified keybinding is triggered. Must take no arguments.
+        """
+        keybind_set = self.parse_keybind_combination(keybind_string)
+        self.callbacks.append((keybind_set, callback))
 
     def start(self):
         self.listener.start()
+        self.listener.wait()
 
     def stop(self):
         self.listener.stop()
@@ -41,9 +42,10 @@ class KeybindListener:
         normalized_key = self.normalize_key(key)
         self.pressed_keys.add(normalized_key)
         # print(self.pressed_keys)
-        if self.pressed_keys == self.keybind_set:
-            print(self.format_keybind_combination(self.pressed_keys))
-            self.callback(self.pressed_keys)
+        for keybind_set, callback in self.callbacks:
+            if self.pressed_keys == keybind_set:
+                print(self.format_keybind_combination(self.pressed_keys))
+                callback()
 
     def on_release(self, key: Key | KeyCode):
         self.pressed_keys.remove(self.normalize_key(key))
