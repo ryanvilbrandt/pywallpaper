@@ -37,7 +37,7 @@ class PyWallpaper(wx.Frame):
     table_name = None
     delay = None
     error_delay = None
-    enable_ephemeral_refresh, ephemeral_refresh_delay = None, None
+    ephemeral_refresh_delay = None
     font = None
     temp_image_filename = None
 
@@ -103,9 +103,6 @@ class PyWallpaper(wx.Frame):
                 self.settings = json.load(f)
         else:
             self.settings = {}
-
-        # Load some required values from settings
-        self.enable_ephemeral_refresh = self.settings.get("enable_ephemeral_refresh", True)
 
     def save_settings(self):
         with open("conf/settings.json", "w") as f:
@@ -576,7 +573,6 @@ class PyWallpaper(wx.Frame):
 
     def set_enable_ephemeral_refresh(self, _event):
         value = self.enable_ephemeral_refresh_checkbox.GetValue()
-        self.enable_ephemeral_refresh = value
         self.settings["enable_ephemeral_refresh"] = value
         self.save_settings()
 
@@ -702,7 +698,7 @@ class PyWallpaper(wx.Frame):
     def refresh_ephemeral_images(self, force_refresh=False):
         # Check ephemeral image refresh delay first, and end early if we need to wait longer.
         if not force_refresh:
-            if not self.enable_ephemeral_refresh:
+            if not self.settings.get("enable_ephemeral_refresh", True):
                 return
             if self.last_ephemeral_image_refresh + self.ephemeral_refresh_delay > time.time():
                 return
