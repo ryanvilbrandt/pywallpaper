@@ -23,9 +23,10 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from db import Db
 import utils
+from db import Db
 from image_utils import get_common_color, has_transparency
+from keybind_listener import KeybindListener
 from src import VERSION
 
 SPI_SET_DESKTOP_WALLPAPER = 0x14
@@ -53,11 +54,14 @@ class PyWallpaper(wx.Frame):
     left_padding, right_padding, top_padding, bottom_padding, use_padding_test_checkbox = None, None, None, None, None
     ephemeral_refresh_value, ephemeral_refresh_dropdown, enable_ephemeral_refresh_checkbox = None, None, None
 
+    keybind_listener: KeybindListener = None
+
     def __init__(self, debug: bool = False):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.migrate_db()
         self.load_config()
         self.load_gui(debug)
+        self.set_keybinds()
 
         # Set delays from GUI elements
         self.set_delay(None)
@@ -258,6 +262,19 @@ class PyWallpaper(wx.Frame):
         else:
             # Intercept window close event
             self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
+
+    def set_keybinds(self):
+        try:
+            self.keybind_listener = KeybindListener()
+        except ImportError:
+            # TODO Create "install pyinput" alert
+            return
+
+        self.keybind_listener.register_callback(
+            self.settings.get("advance_image_keybind", "cmd+shift+right"),
+            self.trigger_image_loop,
+        )
+        self.keybind_listener.start()
 
     def make_images_table(self):
         with Db(table=self.table_name) as db:
@@ -843,6 +860,8 @@ class PyWallpaper(wx.Frame):
     def on_exit(self, *args):
         self.icon.stop()  # Remove the system tray icon
         self.observer.stop()
+        if self.keybind_listener:
+            self.keybind_listener.stop()
         wx.Exit()
 
 
