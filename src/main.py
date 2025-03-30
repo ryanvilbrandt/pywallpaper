@@ -58,22 +58,17 @@ class PyWallpaper(wx.Frame):
 
     def __init__(self, debug: bool = False):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
+        utils.perf()
         self.migrate_db()
+        utils.perf("migrate_db")
         self.load_config()
+        utils.perf("load_config")
         self.load_gui(debug)
-        self.start_keybind_listener()
+        utils.perf("load_gui")
 
         # Set delays from GUI elements
         self.set_delay(None)
         self.set_ephemeral_refresh_delay(None)
-
-        # Set dropdown to saved file list
-        self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
-        # Select "default" if the selected_file_list option isn't available in the dropdown
-        selected_file_list = self.file_list_dropdown.GetValue()
-        if not selected_file_list or selected_file_list == "<Add new file list>":
-            self.file_list_dropdown.SetValue("default")
-        self.select_file_list(None)
 
     @staticmethod
     def migrate_db():
@@ -165,6 +160,14 @@ class PyWallpaper(wx.Frame):
         image_tables.append("<Add new file list>")
         self.file_list_dropdown = wx.ComboBox(p, choices=image_tables, style=wx.CB_READONLY)
         self.file_list_dropdown.Bind(wx.EVT_COMBOBOX, self.select_file_list)
+
+        # Set dropdown to saved file list
+        self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
+        # Select "default" if the selected_file_list option isn't available in the dropdown
+        selected_file_list = self.file_list_dropdown.GetValue()
+        if not selected_file_list or selected_file_list == "<Add new file list>":
+            self.file_list_dropdown.SetValue("default")
+        self.select_file_list(None)
 
         self.delay_value = wx.SpinCtrl(p, min=1, initial=self.settings.get("delay_value", 3))
         self.delay_value.Bind(wx.EVT_SPINCTRL, self.set_delay)
@@ -358,15 +361,37 @@ class PyWallpaper(wx.Frame):
         with Db(table=self.table_name) as db:
             db.make_images_table()
 
-    # Loop functions
-    def run(self):
-        self.refresh_ephemeral_images(force_refresh=True)
+    def post_init(self):
+        """
+        Runs some setup functions that are not required for GUI initialization.
+        This lets the GUI load and become responsive as quickly as possible.
+        """
+        utils.perf("start run")
         self.cycle_timer = wx.Timer()
         self.cycle_timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
+        utils.perf("cycle_timer")
         self.trigger_image_loop(None)
+        utils.perf("trigger_image_loop")
         self.run_icon_loop()
-        self.run_watchdog()
+        utils.perf("run_icon_loop")
+        utils.print_perf("App Init")
 
+        # Run some functions in threads to not slow down app
+        t = threading.Thread(
+            name="refresh_ephemeral_images",
+            target=self.refresh_ephemeral_images,
+            kwargs={"force_refresh": True},
+            daemon=True,
+        )
+        t.start()
+
+        t = threading.Thread(name="run_watchdog", target=self.run_watchdog, daemon=True)
+        t.start()
+
+        t = threading.Thread(name="start_keybind_listener", target=self.start_keybind_listener, daemon=True)
+        t.start()
+
+    # Loop functions
     def trigger_image_loop(self, _event=None):
         self.cycle_timer.Stop()
 
@@ -955,8 +980,10 @@ class PyWallpaper(wx.Frame):
         self.Show()  # Restore the main window
 
     def on_exit(self, *args):
-        self.icon.stop()  # Remove the system tray icon
-        self.observer.stop()
+        if self.icon:
+            self.icon.stop()  # Remove the system tray icon
+        if self.observer:
+            self.observer.stop()
         if self.keybind_listener:
             self.keybind_listener.stop()
         wx.Exit()
@@ -1016,5 +1043,5 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     app = wx.App()
-    PyWallpaper(debug=args.debug).run()
+    PyWallpaper(debug=args.debug).post_init()
     app.MainLoop()
