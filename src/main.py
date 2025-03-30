@@ -22,6 +22,7 @@ import wx
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from wx import Event
 
 import utils
 from db import Db
@@ -243,7 +244,13 @@ class PyWallpaper(wx.Frame):
             wx.EVT_BUTTON, lambda event: self.clear_keybind(delete_image_keybind, "delete")
         )
 
-        # Create a sizer to manage the layout of child widgets
+        redo_colors_button = wx.Button(p, label="Redo Colors for Current Wallpaper")
+        redo_colors_button.Bind(
+            wx.EVT_BUTTON,
+            lambda event: self.set_wallpaper(self.original_file_path, redo_colors=True)
+        )
+
+        # SIZER
         sizer = wx.BoxSizer(wx.VERTICAL)
         file_list_sizer = wx.BoxSizer(wx.HORIZONTAL)
         file_list_sizer.Add(wx.StaticText(p, label=f'Wallpaper list:'), wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
@@ -313,6 +320,8 @@ class PyWallpaper(wx.Frame):
 
         keybind_sizer.Add(grid_sizer, wx.SizerFlags(1).Expand())
         sizer.Add(keybind_sizer, wx.SizerFlags(1).Expand().Border(wx.TOP, 10))
+
+        sizer.Add(redo_colors_button, wx.SizerFlags().Border(wx.TOP, 10))
 
         outer_sizer = wx.BoxSizer(wx.HORIZONTAL)
         outer_sizer.Add(sizer, wx.SizerFlags(1).Expand().Border(wx.LEFT | wx.RIGHT | wx.BOTTOM, 10))
@@ -392,7 +401,7 @@ class PyWallpaper(wx.Frame):
         t.start()
 
     # Loop functions
-    def trigger_image_loop(self, _event=None):
+    def trigger_image_loop(self, _event: Event = None, redo_colors: bool = False):
         self.cycle_timer.Stop()
 
         with Db(table=self.table_name) as db:
@@ -403,14 +412,20 @@ class PyWallpaper(wx.Frame):
             with wx.MessageDialog(self, msg, "Empty wallpaper list") as dialog:
                 dialog.ShowModal()
             return
-        t = threading.Thread(name="image_loop", target=self.pick_new_wallpaper, daemon=True)
+        t = threading.Thread(
+            name="image_loop",
+            target=self.pick_new_wallpaper,
+            kwargs={"redo_colors": redo_colors},
+            daemon=True,
+        )
         t.start()
 
-    def pick_new_wallpaper(self):
+    def pick_new_wallpaper(self, redo_colors: bool = False):
         test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback="").strip('"')
         test_mode = bool(test_wallpaper)
         if test_wallpaper:
-            self.set_wallpaper(test_wallpaper)
+            self.set_wallpaper(test_wallpaper, redo_colors)
+            self.original_file_path = test_wallpaper
             return
         if self.original_file_path:
             self.file_path_history.append(self.original_file_path)
@@ -430,22 +445,22 @@ class PyWallpaper(wx.Frame):
             t2 = time.perf_counter_ns()
             print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
         self.original_file_path = self.original_file_path.replace("/", "\\")
-        self.set_wallpaper(self.original_file_path)
+        self.set_wallpaper(self.original_file_path, redo_colors)
 
         self.refresh_ephemeral_images()
 
-    def set_wallpaper(self, filepath):
-        print(f"Loading {filepath}")
+    def set_wallpaper(self, file_path: str, redo_colors: bool = False):
+        print(f"Loading {file_path}")
         delay = self.error_delay
         try:
             t1 = time.perf_counter_ns()
-            file_path = self.make_image(filepath)
+            file_path = self.make_image(file_path, redo_colors)
             t2 = time.perf_counter_ns()
             print(f"Time to load new image: {(t2 - t1) / 1000:,} us")
         except (FileNotFoundError, UnidentifiedImageError):
-            print(f"Couldn't open image path {filepath!r}", file=sys.stderr)
+            print(f"Couldn't open image path {file_path!r}", file=sys.stderr)
         except OSError as e:
-            print(f"Failed to process image file: {filepath}", file=sys.stderr)
+            print(f"Failed to process image file: {file_path}", file=sys.stderr)
             wx.MessageDialog(self, str(e), "Error").ShowModal()
         else:
             t1a = time.perf_counter_ns()
@@ -455,7 +470,7 @@ class PyWallpaper(wx.Frame):
             delay = self.delay
         wx.CallAfter(self.cycle_timer.StartOnce, delay)
 
-    def make_image(self, file_path: str) -> str:
+    def make_image(self, file_path: str, redo_colors: bool = False) -> str:
         # Open image
         img = Image.open(file_path)
         if img.mode == "P":
@@ -467,6 +482,7 @@ class PyWallpaper(wx.Frame):
             self.str_to_color(self.config.get("Settings", "Border color")),
             self.str_to_color(self.config.get("Settings", "Padding color")),
             file_path,
+            redo_colors,
         )
         # Add text
         if self.add_filepath_checkbox.IsChecked():
