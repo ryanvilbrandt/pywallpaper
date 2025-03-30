@@ -466,6 +466,7 @@ class PyWallpaper(wx.Frame):
             self.str_to_color(self.config.get("Settings", "Background color")),
             self.str_to_color(self.config.get("Settings", "Border color")),
             self.str_to_color(self.config.get("Settings", "Padding color")),
+            file_path,
         )
         # Add text
         if self.add_filepath_checkbox.IsChecked():
@@ -486,7 +487,8 @@ class PyWallpaper(wx.Frame):
             return int(m.group(1)), int(m.group(2)), int(m.group(3))
         return color
 
-    def resize_image_to_bg(self, img: Image, bg_color: str, border_color: str = "", padding_color: str = "") -> Image:
+    def resize_image_to_bg(self, img: Image, bg_color: str, border_color: str = "", padding_color: str = "",
+                           image_file_path: str = "", redo_cache: bool = False) -> Image:
         force_monitor_size = self.config.get("Settings", "Force monitor size")
         if force_monitor_size:
             monitor_width, monitor_height = [int(x) for x in force_monitor_size.split(", ")]
@@ -494,7 +496,7 @@ class PyWallpaper(wx.Frame):
             monitor_width, monitor_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 
         bg_color, border_color, padding_color = self.get_bg_border_padding_colors(
-            img, bg_color, border_color, padding_color
+            img, bg_color, border_color, padding_color, image_file_path, redo_cache
         )
 
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
@@ -546,22 +548,38 @@ class PyWallpaper(wx.Frame):
                 bg.paste(Image.new("RGB", (bg.width, bottom_padding), padding_color), (0, bg.height - bottom_padding))
         return bg
 
-    def get_bg_border_padding_colors(self, img: Image, bg_color: str, border_color: str = "", padding_color: str = ""):
-        kmean_common_colors, mean_shift_common_colors = None, None
+    def get_bg_border_padding_colors(self, img: Image, bg_color: str, border_color: str = "", padding_color: str = "",
+                                     image_file_path: str = "", redo_cache: bool = False) -> tuple[str, str, str]:
+        common_colors = None
 
-        def get_color_by_mode(config_value: str):
-            nonlocal kmean_common_colors, mean_shift_common_colors
-            if "kmean" in config_value:
-                if kmean_common_colors is None:
-                    import kmeans
-                    kmean_common_colors = kmeans.get_common_colors_from_image(img, self.config)
-                return get_common_color(kmean_common_colors, config_value)
-            if "mean_shift" in config_value:
-                if mean_shift_common_colors is None:
-                    import mean_shift
-                    mean_shift_common_colors = mean_shift.get_common_colors_from_image(img, self.config)
-                return get_common_color(mean_shift_common_colors, config_value)
-            return bg_color
+        def get_color_by_mode(config_value: str) -> str | tuple[int, int, int]:
+            nonlocal common_colors
+            if "kmean" not in config_value and "mean_shift" not in config_value:
+                return config_value
+            if common_colors is None:
+                set_cache = False
+                if self.settings.get("use_common_color_cache", True) and not redo_cache:
+                    with Db(table=self.table_name) as db:
+                        print("Using cached common colors")
+                        common_colors = db.get_common_color_cache(image_file_path)
+                        set_cache = True
+                if common_colors is None:
+                    if "kmean" in config_value:
+                        import kmeans
+                        common_colors = kmeans.get_common_colors_from_image(img, self.config)
+                    elif "mean_shift" in config_value:
+                        import mean_shift
+                        common_colors = mean_shift.get_common_colors_from_image(img, self.config)
+                    else:
+                        raise ValueError(
+                            f"Invalid config value: {config_value} "
+                            f"(I probably need to fix the get_color_by_mode function)"
+                        )
+                if set_cache or redo_cache:
+                    with Db(table=self.table_name) as db:
+                        db.set_common_color_cache(image_file_path, common_colors)
+
+            return get_common_color(common_colors, config_value)
 
         bg_color = get_color_by_mode(bg_color)
         border_color = get_color_by_mode(border_color)
@@ -962,10 +980,10 @@ class PyWallpaper(wx.Frame):
                 return
         ext = os.path.splitext(path)[1]
         backup_path = self.config.get("Advanced", "Deleted image path") + ext
+        print(f"Moving {path} to {backup_path}")
         shutil.move(path, backup_path)
         with Db(table=self.table_name) as db:
             db.delete_image(path)
-        print(f"Moving {path} to {backup_path}")
         notification = f"{os.path.basename(path)} has been deleted."
         if len(notification) > 64:
             notification = "..." + notification[-61:]

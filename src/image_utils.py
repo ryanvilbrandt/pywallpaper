@@ -94,8 +94,8 @@ def get_common_color(means: list[tuple[int, int, int]], config_value: str) -> tu
     m = re.search(r"^.*?(\d+)$", config_value)
     if m:
         index = int(m.group(1)) - 1
-        return means[max(0, min(index, len(means) - 1))]
-    return means[0]
+        return tuple(means[max(0, min(index, len(means) - 1))])
+    return tuple(means[0])
 
 
 gen = np.random.default_rng()

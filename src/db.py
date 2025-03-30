@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import sys
 from collections import OrderedDict, defaultdict
 from random import choice, choices
 from sqlite3 import Cursor, OperationalError
@@ -78,6 +79,8 @@ class Db:
             self.version1()
         if version < 2:
             self.version2()
+        if version < 3:
+            self.version3()
 
     def get_version(self) -> int:
         sql = "SELECT version FROM version;"
@@ -107,6 +110,19 @@ class Db:
             self.cur.executescript(sql)
         sql = """
         UPDATE version SET version=2;
+        """
+        self._execute(sql)
+
+    def version3(self):
+        image_tables = self.get_image_tables()
+        for table_name in image_tables:
+            sql = f"""
+            ALTER TABLE images_{table_name}
+            ADD COLUMN color_cache JSON DEFAULT NULL;
+            """
+            self.cur.executescript(sql)
+        sql = """
+        UPDATE version SET version=3;
         """
         self._execute(sql)
 
@@ -321,10 +337,33 @@ class Db:
         sql = f"""
         UPDATE {self.table} SET active=false WHERE filepath=?;
         """
-        self._execute(sql, [filepath])
+        filepath = filepath.replace("\\", "/")
+        ret = self._execute(sql, [filepath])
+        if ret.rowcount == 0:
+            print(f"Failed to set image to inactive: {filepath}", file=sys.stderr)
 
     def delete_image(self, filepath: str):
         sql = f"""
         DELETE FROM {self.table} WHERE filepath=?;
         """
-        self._execute(sql, [filepath])
+        filepath = filepath.replace("\\", "/")
+        ret = self._execute(sql, [filepath])
+        if ret.rowcount == 0:
+            print(f"Failed to delete image from database: {filepath}", file=sys.stderr)
+
+    def get_common_color_cache(self, filepath: str) -> list[tuple[int, int, int]] | None:
+        sql = f"""
+        SELECT color_cache FROM {self.table} WHERE filepath=?;
+        """
+        filepath = filepath.replace("\\", "/")
+        color_cache = self._fetch_one(sql, [filepath])["color_cache"]
+        return json.loads(color_cache) if color_cache is not None else None
+
+    def set_common_color_cache(self, filepath: str, color_cache: list[tuple[int, int, int]]):
+        sql = f"""
+        UPDATE {self.table} SET color_cache=? WHERE filepath=?;
+        """
+        filepath = filepath.replace("\\", "/")
+        ret = self._execute(sql, [json.dumps(color_cache), filepath])
+        if ret.rowcount == 0:
+            print(f"Failed to set color cache for image: {filepath}", file=sys.stderr)
