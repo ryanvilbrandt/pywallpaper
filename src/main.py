@@ -26,7 +26,7 @@ from watchdog.observers import Observer
 import utils
 from db import Db
 from image_utils import get_common_color, has_transparency
-from keybind_listener import KeybindListener
+from keybind_listener import KeybindListener, KeybindDialog
 from version import VERSION
 
 SPI_SET_DESKTOP_WALLPAPER = 0x14
@@ -61,7 +61,7 @@ class PyWallpaper(wx.Frame):
         self.migrate_db()
         self.load_config()
         self.load_gui(debug)
-        self.set_keybinds()
+        self.start_keybind_listener()
 
         # Set delays from GUI elements
         self.set_delay(None)
@@ -206,6 +206,40 @@ class PyWallpaper(wx.Frame):
         self.enable_ephemeral_refresh_checkbox.SetValue(self.settings.get("enable_ephemeral_refresh", True))
         self.enable_ephemeral_refresh_checkbox.Bind(wx.EVT_CHECKBOX, self.set_enable_ephemeral_refresh)
 
+        previous_image_keybind = wx.StaticText(p, label=self.settings.get("previous_image_keybind", "<not set>"))
+        previous_image_keybind_set_button = wx.Button(p, label="Set")
+        previous_image_keybind_set_button.SetInitialSize((30, -1))
+        previous_image_keybind_set_button.Bind(
+            wx.EVT_BUTTON, lambda event: self.set_keybind(previous_image_keybind, "previous")
+        )
+        previous_image_keybind_clear_button = wx.Button(p, label="Clear")
+        previous_image_keybind_clear_button.SetInitialSize((40, -1))
+        previous_image_keybind_clear_button.Bind(
+            wx.EVT_BUTTON, lambda event: self.clear_keybind(previous_image_keybind, "previous")
+        )
+        next_image_keybind = wx.StaticText(p, label=self.settings.get("next_image_keybind", "<not set>"))
+        next_image_keybind_set_button = wx.Button(p, label="Set")
+        next_image_keybind_set_button.SetInitialSize((30, -1))
+        next_image_keybind_set_button.Bind(
+            wx.EVT_BUTTON, lambda event: self.set_keybind(next_image_keybind, "next")
+        )
+        next_image_keybind_clear_button = wx.Button(p, label="Clear")
+        next_image_keybind_clear_button.SetInitialSize((40, -1))
+        next_image_keybind_clear_button.Bind(
+            wx.EVT_BUTTON, lambda event: self.clear_keybind(next_image_keybind, "next")
+        )
+        delete_image_keybind = wx.StaticText(p, label=self.settings.get("delete_image_keybind", "<not set>"))
+        delete_image_keybind_set_button = wx.Button(p, label="Set")
+        delete_image_keybind_set_button.SetInitialSize((30, -1))
+        delete_image_keybind_set_button.Bind(
+            wx.EVT_BUTTON, lambda event: self.set_keybind(delete_image_keybind, "delete")
+        )
+        delete_image_keybind_clear_button = wx.Button(p, label="Clear")
+        delete_image_keybind_clear_button.SetInitialSize((40, -1))
+        delete_image_keybind_clear_button.Bind(
+            wx.EVT_BUTTON, lambda event: self.clear_keybind(delete_image_keybind, "delete")
+        )
+
         # Create a sizer to manage the layout of child widgets
         sizer = wx.BoxSizer(wx.VERTICAL)
         file_list_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -250,11 +284,40 @@ class PyWallpaper(wx.Frame):
         sizer.Add(ephemeral_refresh_sizer, wx.SizerFlags().Border(wx.TOP, 10))
         sizer.Add(self.enable_ephemeral_refresh_checkbox, wx.SizerFlags().Border(wx.TOP, 5))
 
+        keybind_box = wx.StaticBox(p, label="Universal Keybinds (usable everywhere)")
+        keybind_sizer = wx.StaticBoxSizer(keybind_box, wx.VERTICAL)
+
+        grid_sizer = wx.FlexGridSizer(3, 4, 5, 5)
+        grid_sizer.AddGrowableCol(1)  # Make the second column expandable
+        # Add elements for 'Previous image'
+        grid_sizer.Add(wx.StaticText(p, label=f'Previous image:'),
+                       wx.SizerFlags().Border(wx.RIGHT, 3).Align(wx.ALIGN_CENTER_VERTICAL))
+        grid_sizer.Add(previous_image_keybind, wx.SizerFlags().Border(wx.RIGHT, 3).Align(wx.ALIGN_CENTER_VERTICAL))
+        grid_sizer.Add(previous_image_keybind_set_button, wx.SizerFlags().Border(wx.RIGHT, 3))
+        grid_sizer.Add(previous_image_keybind_clear_button, wx.SizerFlags().Border(wx.RIGHT, 3))
+        # Add elements for 'Next image'
+        grid_sizer.Add(wx.StaticText(p, label=f'Next image:'),
+                       wx.SizerFlags().Border(wx.RIGHT, 3).Align(wx.ALIGN_CENTER_VERTICAL))
+        grid_sizer.Add(next_image_keybind, wx.SizerFlags().Border(wx.RIGHT, 3).Align(wx.ALIGN_CENTER_VERTICAL))
+        grid_sizer.Add(next_image_keybind_set_button, wx.SizerFlags().Border(wx.RIGHT, 3))
+        grid_sizer.Add(next_image_keybind_clear_button, wx.SizerFlags().Border(wx.RIGHT, 3))
+        # Add elements for 'Delete image'
+        grid_sizer.Add(wx.StaticText(p, label=f'Delete image:'),
+                       wx.SizerFlags().Border(wx.RIGHT, 3).Align(wx.ALIGN_CENTER_VERTICAL))
+        grid_sizer.Add(delete_image_keybind, wx.SizerFlags().Border(wx.RIGHT, 3).Align(wx.ALIGN_CENTER_VERTICAL))
+        grid_sizer.Add(delete_image_keybind_set_button, wx.SizerFlags().Border(wx.RIGHT, 3))
+        grid_sizer.Add(delete_image_keybind_clear_button, wx.SizerFlags().Border(wx.RIGHT, 3))
+
+        keybind_sizer.Add(grid_sizer, wx.SizerFlags(1).Expand())
+        sizer.Add(keybind_sizer, wx.SizerFlags(1).Expand().Border(wx.TOP, 10))
+
         outer_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        outer_sizer.Add(sizer, wx.SizerFlags().Border(wx.LEFT | wx.RIGHT | wx.BOTTOM, 10))
+        outer_sizer.Add(sizer, wx.SizerFlags(1).Expand().Border(wx.LEFT | wx.RIGHT | wx.BOTTOM, 10))
 
         p.SetSizerAndFit(outer_sizer)
         self.Fit()
+
+        self.SetMinSize(self.GetSize())
 
         if debug:
             self.Bind(wx.EVT_CLOSE, self.on_exit)
@@ -263,23 +326,29 @@ class PyWallpaper(wx.Frame):
             # Intercept window close event
             self.Bind(wx.EVT_CLOSE, self.minimize_to_tray)
 
-    def set_keybinds(self):
+    def start_keybind_listener(self):
         try:
-            self.keybind_listener = KeybindListener()
+            self.keybind_listener = KeybindListener("Main listener")
         except ImportError:
-            # TODO Create "install pyinput" alert
+            msg = ("The universal keybinds feature requires the pynput package to be installed.\n"
+                   "Please install it using 'pip install -r requirements.txt'")
+            with wx.MessageDialog(self, msg, "pynput not installed") as dialog:
+                dialog.ShowModal()
             return
 
         self.keybind_listener.register_callback(
-            self.settings.get("previous_image_keybind", "cmd+shift+left"),
+            "previous_image",
+            self.settings.get("previous_image_keybind"),
             lambda: wx.CallAfter(self.show_previous_image),
         )
         self.keybind_listener.register_callback(
-            self.settings.get("next_image_keybind", "cmd+shift+right"),
+            "next_image",
+            self.settings.get("next_image_keybind"),
             lambda: wx.CallAfter(self.trigger_image_loop),
         )
         self.keybind_listener.register_callback(
-            self.settings.get("delete_image_keybind", "cmd+shift+delete"),
+            "delete_image",
+            self.settings.get("delete_image_keybind"),
             lambda: wx.CallAfter(self.delete_image),
         )
 
@@ -627,6 +696,25 @@ class PyWallpaper(wx.Frame):
             self.set_desktop_wallpaper(temp_file_path)
         else:
             self.set_wallpaper(self.original_file_path)
+
+    def set_keybind(self, label: wx.StaticText, keybind_name: str):
+        # self.keybind_listener.stop()
+        with KeybindDialog(self) as dialog:
+            dialog.ShowModal()
+            keybinds = dialog.key_binds
+        dialog.Destroy()
+        if keybinds:
+            self.keybind_listener.update_keybind(keybind_name + "_image", keybinds)
+            label.SetLabel(keybinds)
+            self.settings[keybind_name + "_image_keybind"] = keybinds
+            self.save_settings()
+        # wx.CallAfter(lambda _event: self.keybind_listener.start(), 1)
+
+    def clear_keybind(self, label: wx.StaticText, keybind_name: str):
+        self.keybind_listener.update_keybind(keybind_name + "_image", None)
+        label.SetLabel("<not set>")
+        del self.settings[keybind_name + "_image_keybind"]
+        self.save_settings()
 
     @staticmethod
     def normalize_file_list_name(name):
