@@ -443,7 +443,7 @@ class PyWallpaper(wx.Frame):
             else:
                 raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
             t2 = time.perf_counter_ns()
-            print(f"Time to get random image: {(t2 - t1) / 1000:,} us")
+            print(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
         self.original_file_path = self.original_file_path.replace("/", "\\")
         self.set_wallpaper(self.original_file_path, redo_colors)
 
@@ -456,7 +456,7 @@ class PyWallpaper(wx.Frame):
             t1 = time.perf_counter_ns()
             file_path = self.make_image(file_path, redo_colors)
             t2 = time.perf_counter_ns()
-            print(f"Time to load new image: {(t2 - t1) / 1000:,} us")
+            print(f"Time to load new image: {(t2 - t1) / 1_000_000:.2f} ms")
         except (FileNotFoundError, UnidentifiedImageError):
             print(f"Couldn't open image path {file_path!r}", file=sys.stderr)
         except OSError as e:
@@ -466,7 +466,7 @@ class PyWallpaper(wx.Frame):
             t1a = time.perf_counter_ns()
             self.set_desktop_wallpaper(file_path)
             t2a = time.perf_counter_ns()
-            print(f"Time to apply image to desktop: {(t2a - t1a) / 1000:,} us")
+            print(f"Time to apply image to desktop: {(t2a - t1a) / 1_000_000:.2f} ms")
             delay = self.delay
         wx.CallAfter(self.cycle_timer.StartOnce, delay)
 

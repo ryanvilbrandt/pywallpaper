@@ -81,7 +81,7 @@ def kmeans(pixels: NDArray[Pixel], config: RawConfigParser) -> dict[Pixel, int]:
         if show_mean_charts:
             save_mean_chart(means, pixel_groups_by_mean, crop_mean_charts=crop_mean_charts)
         t2 = perf_counter_ns()
-        print(f"Finished kmeans loop in {(t2 - t1) / 1000:,} us")
+        print(f"Finished kmeans loop in {(t2 - t1) / 1_000_000:.2f} ms")
         if are_pixels_within_distance(old_means, means, max_distance=max_distance):
             if not pruning_distance:
                 break

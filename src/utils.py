@@ -20,9 +20,9 @@ def print_perf(title: str = "Total:"):
         if i == 0:
             continue
         t1, t2 = perf_list[i - 1][1], perf_list[i][1]
-        print(f"  {perf_tuple[0]} {(t2 - t1) / 1000:,} us")
+        print(f"  {perf_tuple[0]} {(t2 - t1) / 1_000_000:.2f} ms")
     t1, t2 = perf_list[0][1], perf_list[-1][1]
-    print(f"{title} {(t2 - t1) / 1000:,} us")
+    print(f"{title} {(t2 - t1) / 1_000_000:.2f} ms")
 
 
 def load_config():
