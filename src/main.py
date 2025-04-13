@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 from glob import glob
 from io import BytesIO
 from json import JSONDecodeError
-from typing import Sequence, Union, Optional
+from typing import Sequence, Union, Optional, Any
 
 import pystray
 import win32api
@@ -103,6 +103,10 @@ class PyWallpaper(wx.Frame):
                 self.settings = json.load(f)
         else:
             self.settings = {}
+
+    def save_setting(self, name: str, value: Any):
+        self.settings[name] = value
+        self.save_settings()
 
     def save_settings(self):
         with open("conf/settings.json", "w") as f:
@@ -250,6 +254,13 @@ class PyWallpaper(wx.Frame):
             lambda event: self.set_wallpaper(self.original_file_path, redo_colors=True)
         )
 
+        delete_missing_images_checkbox = wx.CheckBox(p, label="Delete missing images from DB?")
+        delete_missing_images_checkbox.SetValue(self.settings.get("delete_missing_images", False))
+        delete_missing_images_checkbox.Bind(
+            wx.EVT_CHECKBOX,
+            lambda e: self.save_setting("delete_missing_images", e.EventObject.Value)
+        )
+
         # SIZER
         sizer = wx.BoxSizer(wx.VERTICAL)
         file_list_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -322,6 +333,8 @@ class PyWallpaper(wx.Frame):
         sizer.Add(keybind_sizer, wx.SizerFlags(1).Expand().Border(wx.TOP, 10))
 
         sizer.Add(redo_colors_button, wx.SizerFlags().Border(wx.TOP, 10))
+
+        sizer.Add(delete_missing_images_checkbox, wx.SizerFlags().Border(wx.TOP, 10))
 
         outer_sizer = wx.BoxSizer(wx.HORIZONTAL)
         outer_sizer.Add(sizer, wx.SizerFlags(1).Expand().Border(wx.LEFT | wx.RIGHT | wx.BOTTOM, 10))
@@ -430,7 +443,7 @@ class PyWallpaper(wx.Frame):
         if self.original_file_path:
             self.file_path_history.append(self.original_file_path)
             self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
-            print(f"History: {self.file_path_history}")
+            # print(f"History: {self.file_path_history}")
         with Db(table=self.table_name) as db:
             t1 = time.perf_counter_ns()
             algorithm = self.config.get("Settings", "Random algorithm").lower()
@@ -459,6 +472,7 @@ class PyWallpaper(wx.Frame):
             print(f"Time to load new image: {(t2 - t1) / 1_000_000:.2f} ms")
         except (FileNotFoundError, UnidentifiedImageError):
             print(f"Couldn't open image path {file_path!r}", file=sys.stderr)
+            self.delete_missing_image(file_path)
         except OSError as e:
             print(f"Failed to process image file: {file_path}", file=sys.stderr)
             wx.MessageDialog(self, str(e), "Error").ShowModal()
@@ -639,6 +653,20 @@ class PyWallpaper(wx.Frame):
             eventType=event_type,
             strings=[message],
         )
+
+    def delete_missing_image(self, file_path: str):
+        # Only delete if the setting was enabled
+        if not self.settings.get("delete_missing_images", False):
+            return
+        # Check if the folder the image is in is accessible. If not, assume it's just a temporary
+        # network/file access issue and end early.
+        directory = os.path.dirname(file_path)
+        if not os.path.isdir(directory):
+            print("Couldn't access image directory. Not deleting image.", file=sys.stderr)
+            return
+        print("Deleting image from DB...", file=sys.stderr)
+        with Db(table=self.table_name) as db:
+            db.delete_image(file_path)
 
     def show_previous_image(self, _event=None):
         if not self.file_path_history:
