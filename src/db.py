@@ -140,7 +140,8 @@ class Db:
             include_subdirectories BOOLEAN DEFAULT FALSE,
             ephemeral BOOLEAN DEFAULT FALSE,
             is_eagle_directory BOOLEAN DEFAULT FALSE,
-            eagle_folder_data TEXT DEFAULT NULL
+            eagle_folder_data TEXT DEFAULT NULL,
+            color_cache JSON DEFAULT NULL
         );"""
         self.cur.execute(sql)
 
