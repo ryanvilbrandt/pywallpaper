@@ -54,6 +54,7 @@ class PyWallpaper(wx.Frame):
     icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
     left_padding, right_padding, top_padding, bottom_padding, use_padding_test_checkbox = None, None, None, None, None
     ephemeral_refresh_value, ephemeral_refresh_dropdown, enable_ephemeral_refresh_checkbox = None, None, None
+    running_ephemeral_image_refresh = False
 
     keybind_listener: KeybindListener = None
 
@@ -399,8 +400,6 @@ class PyWallpaper(wx.Frame):
         utils.print_perf("App Init")
 
         # Run some functions in threads to not slow down app
-        wx.CallAfter(self.refresh_ephemeral_images, force_refresh=True)
-
         t = threading.Thread(name="run_watchdog", target=self.run_watchdog, daemon=True)
         t.start()
 
@@ -454,7 +453,7 @@ class PyWallpaper(wx.Frame):
         self.original_file_path = self.original_file_path.replace("/", "\\")
         self.set_wallpaper(self.original_file_path, redo_colors)
 
-        self.refresh_ephemeral_images()
+        wx.CallAfter(self.refresh_ephemeral_images)
 
     def set_wallpaper(self, file_path: str, redo_colors: bool = False):
         print(f"Loading {file_path}")
@@ -891,23 +890,30 @@ class PyWallpaper(wx.Frame):
             dialog.ShowModal()
 
     def refresh_ephemeral_images(self, force_refresh=False):
+        # Do not run more than one refresh at once
+        if self.running_ephemeral_image_refresh:
+            return
         # Check ephemeral image refresh delay first, and end early if we need to wait longer.
         if not force_refresh:
             if not self.settings.get("enable_ephemeral_refresh", True):
                 return
             if self.last_ephemeral_image_refresh + self.ephemeral_refresh_delay > time.time():
                 return
-        with Db(table=self.table_name) as db:
-            folders = list(db.get_active_folders())
-            for folder in folders:
-                print(f"Refreshing ephemeral images for {folder['filepath']}")
-                if folder["is_eagle_directory"]:
-                    file_paths = self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
-                else:
-                    file_paths = self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
-                if file_paths:
-                    db.add_images(file_paths, ephemeral=True)
-        self.last_ephemeral_image_refresh = time.time()
+        try:
+            self.running_ephemeral_image_refresh = True
+            with Db(table=self.table_name) as db:
+                folders = list(db.get_active_folders())
+                for folder in folders:
+                    print(f"Refreshing ephemeral images for {folder['filepath']}")
+                    if folder["is_eagle_directory"]:
+                        file_paths = self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
+                    else:
+                        file_paths = self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
+                    if file_paths:
+                        db.add_images(file_paths, ephemeral=True)
+        finally:
+            self.running_ephemeral_image_refresh = False
+            self.last_ephemeral_image_refresh = time.time()
 
     def get_file_list_in_folder(self, dir_path: str, include_subfolders: bool) -> Sequence[str]:
         file_paths = []
