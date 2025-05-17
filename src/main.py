@@ -399,13 +399,7 @@ class PyWallpaper(wx.Frame):
         utils.print_perf("App Init")
 
         # Run some functions in threads to not slow down app
-        t = threading.Thread(
-            name="refresh_ephemeral_images",
-            target=self.refresh_ephemeral_images,
-            kwargs={"force_refresh": True},
-            daemon=True,
-        )
-        t.start()
+        wx.CallAfter(self.refresh_ephemeral_images, force_refresh=True)
 
         t = threading.Thread(name="run_watchdog", target=self.run_watchdog, daemon=True)
         t.start()
@@ -940,11 +934,13 @@ class PyWallpaper(wx.Frame):
             total_folders = len(folder_list)
             progress_bar.SetRange(total_folders)
             progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
-            for i, folder_path in enumerate(folder_list):
+            for i, folder_path in enumerate(folder_list, start=1):
+                # if i % 100 == 0:
+                #     print(f"Scanning Eagle folders: {i}/{total_folders}")
                 file_path = self.parse_eagle_folder(folder_path, folder_ids, ignore_lock=True)
                 if file_path is not None:
                     file_list.append(file_path)
-                pb_status = progress_bar.Update(i + 1, newmsg=f"Scanning image folders... ({i + 1}/{total_folders})")
+                pb_status = progress_bar.Update(i, newmsg=f"Scanning image folders... ({i}/{total_folders})")
                 # If user clicked Abort, return early
                 if not pb_status[0]:
                     return []
@@ -976,7 +972,7 @@ class PyWallpaper(wx.Frame):
             print(folder_ids, file=sys.stderr)
             print(metadata["folders"], file=sys.stderr)
             raise
-        print(f"Loading image from {dir_path}...")
+        # print(f"Loading image from {dir_path}...")
         for file_path in file_list:
             if file_path.endswith("metadata.json"):
                 continue
@@ -1072,6 +1068,9 @@ class MyEventHandler(FileSystemEventHandler):
     def on_modified(self, event):
         # TODO Add way to remove eagle files if the folder_id in metadata.json is changed.
         if event.is_directory or event.src_path.endswith("@SynoEAStream"):
+            return
+        # Ignore Eagle JSON files
+        if event.src_path.endswith("metadata.json"):
             return
         print(f"File modified: {event.src_path}")
         self.add_file(event.src_path)
