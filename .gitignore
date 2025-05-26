@@ -4,6 +4,8 @@ venv/
 config.ini
 settings.json
 
+conf/logging.yaml
+
 database/main.db
 tests/integration/database/main.db
 
