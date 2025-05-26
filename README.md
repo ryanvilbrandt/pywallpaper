@@ -4,11 +4,18 @@ A GUI application with a systray icon, that lets you pick a list of images to ap
 
 # Installation
 
-Install all required libraries with `pip install -r requirements.txt`
+1. Install [Python 3.11 or greater](https://www.python.org/downloads/)
+2. Create a Python virtual environment and install all dependencies:
+
+```commandline
+python -m venv venv/
+call venv/Scripts/activate.bat
+pip install -r requirements.txt
+```
 
 # Usage
 
-1. Run `python main.py`
+1. Run `run.bat`
 2. Right-click the pyWallpaper icon that popped up in your system tray and click Show Window.
 3. Click the "Add Files to Wallpaper List" button.
 4. Select some files to add to the list of images that will be cycled through by pyWallpaper.
@@ -40,6 +47,5 @@ Change the `Force monitor size` config option to the correct monitor size. e.g. 
 # TODO
 
 * Display images in a given file list
-* Allow picking of file lists from within the app
-* Add ability to remove folders that were added to file lists
+* Add the ability to remove folders that were added to file lists
 * Option to create auto-collage of random images for each wallpaper
