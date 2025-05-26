@@ -27,6 +27,12 @@ The `Random algorithm` config setting defines how the wallpaper images are picke
 
 # Troubleshooting
 
+## Program doesn't start when I run `run.bat`
+
+It's likely that the application is failing to start due to an invalid config or perhaps some necessary libraries weren't installed (usually happens after an update).
+
+Run `run_in_debug.bat` to make whatever error is being thrown show up in the console window.
+
 ## Image isn't sized properly to the monitor I want
 
 Change the `Force monitor size` config option to the correct monitor size. e.g. `1920, 1080`
