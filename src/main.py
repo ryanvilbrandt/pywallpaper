@@ -1,10 +1,10 @@
 import ctypes
 import json
+import logging.config
 import os
 import re
 import shutil
 import subprocess
-import sys
 import threading
 import time
 from argparse import ArgumentParser
@@ -19,6 +19,7 @@ import win32clipboard
 import win32evtlog
 import win32evtlogutil
 import wx
+import yaml
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -31,6 +32,7 @@ from keybind_listener import KeybindListener, KeybindDialog
 from version import VERSION
 
 SPI_SET_DESKTOP_WALLPAPER = 0x14
+logger = logging.getLogger(__name__)
 
 
 class PyWallpaper(wx.Frame):
@@ -59,6 +61,7 @@ class PyWallpaper(wx.Frame):
     keybind_listener: KeybindListener = None
 
     def __init__(self, debug: bool = False):
+        self.init_logger(debug)
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         utils.perf()
         self.migrate_db()
@@ -71,6 +74,44 @@ class PyWallpaper(wx.Frame):
         # Set delays from GUI elements
         self.set_delay(None)
         self.set_ephemeral_refresh_delay(None)
+
+    def init_logger(self, debug: bool = False):
+        # Load logging config file
+        with open("conf/logging.yaml", "r") as f:
+            raw = f.read()
+
+        # Expand out env vars and apply config
+        expanded = os.path.expandvars(raw).replace("\\", "/")
+        config = yaml.safe_load(expanded)
+        logging.config.dictConfig(config)
+
+        # Find the file_handler so we can use it later
+        file_handler = None
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.FileHandler):
+                file_handler = handler
+                break
+
+        # Make the logging directory if needed
+        if file_handler:
+            log_dir_name = os.path.dirname(file_handler.baseFilename)
+            os.makedirs(log_dir_name, exist_ok=True)
+
+        # If in debug mode, or file_handler isn't set, also log to the console
+        if debug or file_handler is None:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            # Use the same formatter as defined in the YAML
+            if file_handler is None:
+                formatter = logging.Formatter("[%(asctime)s] %(levelname)s in %(name)s: %(message)s")
+            else:
+                formatter = file_handler.formatter
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+
+        logger.info("Logger initialized")
+        if file_handler is None:
+            logger.warning("No file handler is configured. Logging to the console.")
 
     @staticmethod
     def migrate_db():
@@ -90,7 +131,7 @@ class PyWallpaper(wx.Frame):
                 c.getint("Filepath", "Font size")
             )
         except OSError:
-            print(f"Couldn't find font at '{font_name}'")
+            logger.exception(f"Couldn't find font at '{font_name}'")
             self.font = ImageFont.load_default()
 
         self.temp_image_filename = os.path.join(
@@ -149,6 +190,7 @@ class PyWallpaper(wx.Frame):
             pystray.MenuItem("Delete Image", self.delete_image),
             pystray.MenuItem("", None),
             pystray.MenuItem("Show Window", self.restore_from_tray),
+            pystray.MenuItem("Show Logs Folder", self.show_logs_folder),
             pystray.MenuItem("Exit", self.on_exit)
         )
         self.icon = pystray.Icon("pywallpaper", image, "pyWallpaper", menu)
@@ -397,7 +439,7 @@ class PyWallpaper(wx.Frame):
         utils.perf("trigger_image_loop")
         self.run_icon_loop()
         utils.perf("run_icon_loop")
-        utils.print_perf("App Init")
+        utils.log_perf("App Init")
 
         # Run some functions in threads to not slow down app
         t = threading.Thread(name="run_watchdog", target=self.run_watchdog, daemon=True)
@@ -436,7 +478,7 @@ class PyWallpaper(wx.Frame):
         if self.original_file_path:
             self.file_path_history.append(self.original_file_path)
             self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
-            # print(f"History: {self.file_path_history}")
+            logger.debug(f"History: {self.file_path_history}")
         with Db(table=self.table_name) as db:
             t1 = time.perf_counter_ns()
             algorithm = self.config.get("Settings", "Random algorithm").lower()
@@ -449,31 +491,31 @@ class PyWallpaper(wx.Frame):
             else:
                 raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
             t2 = time.perf_counter_ns()
-            print(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
+            logger.info(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
         self.original_file_path = self.original_file_path.replace("/", "\\")
         self.set_wallpaper(self.original_file_path, redo_colors)
 
         wx.CallAfter(self.refresh_ephemeral_images)
 
     def set_wallpaper(self, file_path: str, redo_colors: bool = False):
-        print(f"Loading {file_path}")
+        logger.info(f"Loading {file_path}")
         delay = self.error_delay
         try:
             t1 = time.perf_counter_ns()
             file_path = self.make_image(file_path, redo_colors)
             t2 = time.perf_counter_ns()
-            print(f"Time to load new image: {(t2 - t1) / 1_000_000:.2f} ms")
+            logger.info(f"Time to load new image: {(t2 - t1) / 1_000_000:.2f} ms")
         except (FileNotFoundError, UnidentifiedImageError):
-            print(f"Couldn't open image path {file_path!r}", file=sys.stderr)
+            logger.exception(f"Couldn't open image path {file_path!r}")
             self.delete_missing_image(file_path)
         except OSError as e:
-            print(f"Failed to process image file: {file_path}", file=sys.stderr)
+            logger.exception(f"Failed to process image file: {file_path}")
             wx.MessageDialog(self, str(e), "Error").ShowModal()
         else:
             t1a = time.perf_counter_ns()
             self.set_desktop_wallpaper(file_path)
             t2a = time.perf_counter_ns()
-            print(f"Time to apply image to desktop: {(t2a - t1a) / 1_000_000:.2f} ms")
+            logger.info(f"Time to apply image to desktop: {(t2a - t1a) / 1_000_000:.2f} ms")
             delay = self.delay
         wx.CallAfter(self.cycle_timer.StartOnce, delay)
 
@@ -583,7 +625,7 @@ class PyWallpaper(wx.Frame):
                 set_cache = False
                 if self.settings.get("use_common_color_cache", True) and not redo_cache:
                     with Db(table=self.table_name) as db:
-                        print("Using cached common colors")
+                        logger.info("Using cached common colors")
                         common_colors = db.get_common_color_cache(image_file_path)
                         set_cache = True
                 if common_colors is None:
@@ -655,9 +697,9 @@ class PyWallpaper(wx.Frame):
         # network/file access issue and end early.
         directory = os.path.dirname(file_path)
         if not os.path.isdir(directory):
-            print("Couldn't access image directory. Not deleting image.", file=sys.stderr)
+            logger.warning("Couldn't access image directory. Not deleting image.")
             return
-        print("Deleting image from DB...", file=sys.stderr)
+        logger.warning("Deleting image from DB...")
         with Db(table=self.table_name) as db:
             db.delete_image(file_path)
 
@@ -669,7 +711,7 @@ class PyWallpaper(wx.Frame):
             return
         self.cycle_timer.Stop()
         self.original_file_path = self.file_path_history.pop()
-        print(f"History: {self.file_path_history}")
+        logger.debug(f"History: {self.file_path_history}")
         self.set_wallpaper(self.original_file_path)
 
     def run_icon_loop(self):
@@ -690,8 +732,8 @@ class PyWallpaper(wx.Frame):
                 )
         try:
             self.observer.start()
-        except OSError as e:
-            print(e, file=sys.stderr)
+        except OSError:
+            logger.exception("")
 
     def add_observer_schedule(self, dir_path: str, include_subfolders: bool = False,
                               eagle_folder_ids: Optional[list[str]] = None):
@@ -709,7 +751,7 @@ class PyWallpaper(wx.Frame):
             dir_path,
             recursive=include_subfolders or is_eagle
         )
-        print("Scheduled watchdog for folder {}".format(dir_path))
+        logger.info("Scheduled watchdog for folder {}".format(dir_path))
 
     # GUI Functions
     def select_file_list(self, _event):
@@ -740,7 +782,7 @@ class PyWallpaper(wx.Frame):
         units = {"seconds": 1, "minutes": 60, "hours": 3600}
         unit = self.delay_dropdown.GetValue()
         self.delay = value * units[unit] * 1000  # ms
-        print(self.delay)
+        logger.debug(self.delay)
         if _event:
             self.settings["delay_value"] = value
             self.settings["delay_unit"] = unit
@@ -756,7 +798,7 @@ class PyWallpaper(wx.Frame):
         units = {"seconds": 1, "minutes": 60, "hours": 3600}
         unit = self.ephemeral_refresh_dropdown.GetValue()
         self.ephemeral_refresh_delay = value * units[unit]  # seconds
-        print(self.ephemeral_refresh_delay)
+        logger.debug(self.ephemeral_refresh_delay)
         if _event:
             self.settings["ephemeral_refresh_delay_value"] = value
             self.settings["ephemeral_refresh_delay_unit"] = unit
@@ -904,7 +946,7 @@ class PyWallpaper(wx.Frame):
             with Db(table=self.table_name) as db:
                 folders = list(db.get_active_folders())
                 for folder in folders:
-                    print(f"Refreshing ephemeral images for {folder['filepath']}")
+                    logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
                     if folder["is_eagle_directory"]:
                         file_paths = self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
                     else:
@@ -947,7 +989,7 @@ class PyWallpaper(wx.Frame):
                 if file_path is not None:
                     file_list.append(file_path)
                 pb_status = progress_bar.Update(i, newmsg=f"Scanning image folders... ({i}/{total_folders})")
-                # If user clicked Abort, return early
+                # If the user clicked Abort, return early
                 if not pb_status[0]:
                     return []
             return file_list
@@ -960,32 +1002,32 @@ class PyWallpaper(wx.Frame):
             return None
         file_list = glob(os.path.join(dir_path, "*.*"))
         if os.path.join(dir_path, "metadata.json") not in file_list:
-            print(f"No metadata.json file found in {dir_path}", file=sys.stderr)
-            print(file_list, file=sys.stderr)
+            logger.warning(f"No metadata.json file found in {dir_path}")
+            logger.warning(file_list)
             return None
         try:
             with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
                 metadata = json.load(f)
-        except JSONDecodeError as e:
-            print(f"Error when decoding {os.path.join(dir_path, 'metadata.json')}", file=sys.stderr)
-            print(e, file=sys.stderr)
+        except JSONDecodeError:
+            logger.exception(f"Error when decoding {os.path.join(dir_path, 'metadata.json')}")
             return None
         # Skip if it's not a folder_id we care about
         try:
             if not set(folder_ids).intersection(metadata["folders"]):
                 return None
-        except TypeError as e:
-            print(folder_ids, file=sys.stderr)
-            print(metadata["folders"], file=sys.stderr)
+        except TypeError:
+            logger.exception("TypeError when intersecting folder sets")
+            logger.error(folder_ids)
+            logger.error(metadata["folders"])
             raise
-        # print(f"Loading image from {dir_path}...")
+        logger.debug(f"Loading image from {dir_path}...")
         for file_path in file_list:
             if file_path.endswith("metadata.json"):
                 continue
             if len(file_list) > 2 and file_path.endswith("_thumbnail.png"):
                 continue
             return file_path.replace("\\", "/")
-        print(f"No non-thumbnail image found in {dir_path}", file=sys.stderr)
+        logger.error(f"No non-thumbnail image found in {dir_path}")
         return None
 
     def advance_image(self, _icon, _item):
@@ -1026,7 +1068,7 @@ class PyWallpaper(wx.Frame):
                 return
         ext = os.path.splitext(path)[1]
         backup_path = self.config.get("Advanced", "Deleted image path") + ext
-        print(f"Moving {path} to {backup_path}")
+        logger.info(f"Moving {path} to {backup_path}")
         shutil.move(path, backup_path)
         with Db(table=self.table_name) as db:
             db.delete_image(path)
@@ -1042,6 +1084,17 @@ class PyWallpaper(wx.Frame):
 
     def restore_from_tray(self, _icon, _item):
         self.Show()  # Restore the main window
+
+    def show_logs_folder(self, _icon, _item):
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.FileHandler):
+                subprocess.Popen(["explorer", "/select,", os.path.abspath(handler.baseFilename)])
+                return
+
+        # Create error modal if we couldn't find a logs folder
+        msg = "Could not open logs folder - no active file logger was found."
+        with wx.MessageDialog(self, msg, "Error", style=wx.OK | wx.ICON_ERROR) as dialog:
+            dialog.ShowModal()
 
     def on_exit(self, *args):
         if self.icon:
@@ -1068,7 +1121,7 @@ class MyEventHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory or event.src_path.endswith("@SynoEAStream"):
             return
-        print(f"File created: {event.src_path}")
+        logger.debug(f"File created: {event.src_path}")
         self.add_file(event.src_path)
 
     def on_modified(self, event):
@@ -1078,13 +1131,13 @@ class MyEventHandler(FileSystemEventHandler):
         # Ignore Eagle JSON files
         if event.src_path.endswith("metadata.json"):
             return
-        print(f"File modified: {event.src_path}")
+        logger.debug(f"File modified: {event.src_path}")
         self.add_file(event.src_path)
 
     def add_file(self, file_path: str):
         file_path = file_path.replace("\\", "/")
         if self.eagle_mode:
-            print(f"Adding '{file_path}' in Eagle mode. eagle_folder_ids={self.eagle_folder_ids}")
+            logger.debug(f"Adding '{file_path}' in Eagle mode. eagle_folder_ids={self.eagle_folder_ids}")
             base_dir = os.path.dirname(file_path)
             file_path = self.parent.parse_eagle_folder(base_dir, self.eagle_folder_ids)
             if file_path is None:
@@ -1095,7 +1148,7 @@ class MyEventHandler(FileSystemEventHandler):
     def on_deleted(self, event):
         if event.is_directory or event.src_path.endswith("@SynoEAStream"):
             return
-        print(f"File deleted: {event.src_path}")
+        logger.debug(f"File deleted: {event.src_path}")
         file_path = event.src_path.replace("\\", "/")
         with Db(table=self.parent.table_name) as db:
             db.delete_image(file_path)
@@ -1110,5 +1163,9 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     app = wx.App()
-    PyWallpaper(debug=args.debug).post_init()
-    app.MainLoop()
+    try:
+        PyWallpaper(debug=args.debug).post_init()
+        app.MainLoop()
+    except Exception:
+        logger.exception("Pywallpaper halted with an error:")
+        raise

@@ -1,4 +1,4 @@
-import sys
+import logging
 from typing import Union, TypedDict, Callable
 
 import wx
@@ -9,6 +9,8 @@ try:
     from pynput.keyboard import Key, KeyCode
 except ImportError:
     keyboard, Key, KeyCode = None, None, None
+
+logger = logging.getLogger(__name__)
 
 
 class CallbackDict(TypedDict):
@@ -82,7 +84,7 @@ class KeybindListener:
     def on_press(self, key: Union[Key, KeyCode]):
         normalized_key = self.normalize_key(key)
         self.pressed_keys.add(normalized_key)
-        # print(self.pressed_keys)
+        # logger.debug(self.pressed_keys)
         for keybind_name, d in self.callbacks.items():
             if keybind_name == "auto_capture":
                 # A special callback that triggers whenever a non-modifier key is pressed.
@@ -91,14 +93,14 @@ class KeybindListener:
                     d["callback"](self.pressed_keys)
                     return
             if self.pressed_keys == d["keybinds"]:
-                print(self.format_keybind_combination(self.pressed_keys))
+                logger.debug(self.format_keybind_combination(self.pressed_keys))
                 d["callback"]()
 
     def on_release(self, key: Union[Key, KeyCode]):
         try:
             self.pressed_keys.remove(self.normalize_key(key))
         except KeyError as e:
-            print(e, file=sys.stderr)
+            logger.exception("Error when detecting on_release")
 
     def normalize_key(self, key: Union[Key, KeyCode]) -> Union[Key, KeyCode]:
         if isinstance(key, KeyCode):

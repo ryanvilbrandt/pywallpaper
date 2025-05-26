@@ -1,5 +1,4 @@
-import sys
-import traceback
+import logging
 from collections import defaultdict
 from configparser import RawConfigParser
 
@@ -9,7 +8,9 @@ from numpy._typing import NDArray
 
 from image_utils import convert_image_to_pixels, subsample, exclude_pixels_near_white, Pixel, pixels_to_tuples, \
     downscale_image, sort_means
-from utils import perf, print_perf, load_config
+from utils import perf, log_perf, load_config
+
+logger = logging.getLogger(__name__)
 
 
 def get_common_colors_from_image(
@@ -50,7 +51,7 @@ def get_common_colors_from_image(
         sorted_colors = sort_means(cluster_centers)
         perf("Sort colors:")
 
-        print_perf(f"Finished finding common color in")
+        log_perf(f"Finished finding common color in")
 
         if show_plot:
             # Plot the dominant colors
@@ -58,8 +59,8 @@ def get_common_colors_from_image(
 
         return pixels_to_tuples(sorted_colors)
     except ValueError:
-        traceback.print_exc(file=sys.stderr)
-        # return [(0, 0, 0)] * config.getint("Kmeans", "Cluster size")  # Return black by default
+        logger.exception("Error when calculating mean shift")
+        return [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]  # Return black by default
 
 
 def mean_shift_with_removal(
@@ -70,7 +71,7 @@ def mean_shift_with_removal(
     cluster_centers = defaultdict(int)
 
     while len(points) > 0:  # Keep looping until all points are assigned
-        print(f"Points remaining: {len(points)}")
+        logger.debug(f"Points remaining: {len(points)}")
 
         # Pick the first available point
         center = points[0].copy()
@@ -81,7 +82,7 @@ def mean_shift_with_removal(
             within_radius = distances < radius
             # Check for if we have no points within the radius
             if np.sum(within_radius) == 0:
-                print("Found cluster with no points. Skipping.")
+                logger.debug("Found cluster with no points. Skipping.")
                 break
             new_center = points[within_radius].mean(axis=0)
 
@@ -89,7 +90,7 @@ def mean_shift_with_removal(
                 break
             center = new_center
         else:
-            print("Hit max_iters")
+            logger.debug("Hit max_iters")
 
         if np.sum(within_radius) == 0:
             points = points[1:]
@@ -97,14 +98,14 @@ def mean_shift_with_removal(
             cluster_centers[tuple(center)] += np.sum(within_radius)
             # Remove assigned points from `points`
             points = points[~within_radius]  # Keep only points that are NOT within radius
-    print("Done finding clusters")
+    logger.debug("Done finding clusters")
 
     return cluster_centers
 
 
 def plot_colors(cluster_centers: dict[Pixel, int]):
     """Plot the extracted dominant colors by number of pixels in the group."""
-    print("Plotting color orders...")
+    logger.debug("Plotting color orders...")
 
     import matplotlib
     matplotlib.use("TkAgg")

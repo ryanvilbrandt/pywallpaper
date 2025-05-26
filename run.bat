@@ -1,2 +1,3 @@
 call venv/Scripts/activate.bat
-python src/main.py
+start /b pythonw src/main.py
+exit

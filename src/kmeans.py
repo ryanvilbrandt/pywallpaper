@@ -1,5 +1,4 @@
-import sys
-import traceback
+import logging
 from configparser import RawConfigParser
 from math import sqrt, ceil
 from time import perf_counter_ns
@@ -10,7 +9,9 @@ from numpy.typing import NDArray
 
 from image_utils import convert_image_to_pixels, exclude_pixels_near_white, subsample, Pixel, pixel_to_tuple, \
     sort_means, pixels_to_tuples, downscale_image
-from utils import perf, print_perf
+from utils import perf, log_perf
+
+logger = logging.getLogger(__name__)
 
 
 def get_common_colors_from_image(img: Image, config: RawConfigParser) -> list[tuple[int, int, int]]:
@@ -43,11 +44,11 @@ def get_common_colors_from_image(img: Image, config: RawConfigParser) -> list[tu
         common_colors = sort_means(means)
         perf("Most common mean:")
 
-        print_perf(f"Finished finding common color in")
+        log_perf(f"Finished finding common color in")
 
         return pixels_to_tuples(common_colors)
     except ValueError:
-        traceback.print_exc(file=sys.stderr)
+        logger.exception("Error when processing kmeans")
         return [(0, 0, 0)] * config.getint("Kmeans", "Cluster size")  # Return black by default
 
 
@@ -63,7 +64,7 @@ def kmeans(pixels: NDArray[Pixel], config: RawConfigParser) -> dict[Pixel, int]:
     means, pixel_groups_by_mean = subsample(pixels, n_clusters), []
     for _ in range(max_iters):
         t1 = perf_counter_ns()
-        print(f"Num means: {len(means)}")
+        logger.debug(f"Num means: {len(means)}")
         pixel_groups_by_mean = group_pixels_by_means(means, pixels)
         # Remove any means with no associated pixel groups
         if any(p.size == 0 for p in pixel_groups_by_mean):
@@ -75,13 +76,13 @@ def kmeans(pixels: NDArray[Pixel], config: RawConfigParser) -> dict[Pixel, int]:
                     p.append(group)
             means, pixel_groups_by_mean = m, p
             y = len(pixel_groups_by_mean)
-            print(f"Removed {x - y} empty groups", file=sys.stderr)
+            logger.warning(f"Removed {x - y} empty groups")
         old_means = means
         means = np.array([mean_of_pixels(group) for group in pixel_groups_by_mean])
         if show_mean_charts:
             save_mean_chart(means, pixel_groups_by_mean, crop_mean_charts=crop_mean_charts)
         t2 = perf_counter_ns()
-        print(f"Finished kmeans loop in {(t2 - t1) / 1_000_000:.2f} ms")
+        logger.info(f"Finished kmeans loop in {(t2 - t1) / 1_000_000:.2f} ms")
         if are_pixels_within_distance(old_means, means, max_distance=max_distance):
             if not pruning_distance:
                 break
@@ -110,7 +111,7 @@ def mean_of_pixels(array_of_pixels: NDArray[Pixel]) -> Pixel:
 def are_pixels_within_distance(pixels_a: np.ndarray, pixels_b: np.ndarray, max_distance: float) -> bool:
     # Calculate the Euclidean distances between corresponding pixels
     distances = np.linalg.norm(pixels_a - pixels_b, axis=1)
-    # print(f"Distances: {distances}")
+    logger.debug(f"Distances: {distances}")
     # Check if all distances are within the max_distance
     return np.all(distances <= max_distance)
 
@@ -150,7 +151,7 @@ def prune_means(
     if len(means) == len(mean_groups):
         return means, pixel_groups
 
-    print(mean_groups)
+    logger.debug(mean_groups)
     # For each group, find the array to keep based on the largest corresponding array in pixel_groups
     arrays_to_keep = set()
     for group in mean_groups:
@@ -197,7 +198,7 @@ def save_mean_chart(
                     fill=color,
                 )
             except ValueError as e:
-                print(f"{e}: ({x}, {y})", file=sys.stderr)
+                logger.error(f"{e}: ({x}, {y})")
 
     # Project 3D pixels to 2D (ignore z-coordinate for simplicity)
     min_x, min_y, max_x, max_y = 255, 255, 0, 0

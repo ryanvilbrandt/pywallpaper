@@ -1,10 +1,12 @@
 import json
+import logging
 import sqlite3
-import sys
 from collections import OrderedDict, defaultdict
 from random import choice, choices
 from sqlite3 import Cursor, OperationalError
 from typing import Optional, Iterator, Union, Sequence
+
+logger = logging.getLogger(__name__)
 
 
 class Db:
@@ -341,7 +343,7 @@ class Db:
         filepath = filepath.replace("\\", "/")
         ret = self._execute(sql, [filepath])
         if ret.rowcount == 0:
-            print(f"Failed to set image to inactive: {filepath}", file=sys.stderr)
+            logger.error(f"Failed to set image to inactive: {filepath}")
 
     def delete_image(self, filepath: str):
         sql = f"""
@@ -350,7 +352,7 @@ class Db:
         filepath = filepath.replace("\\", "/")
         ret = self._execute(sql, [filepath])
         if ret.rowcount == 0:
-            print(f"Failed to delete image from database: {filepath}", file=sys.stderr)
+            logger.error(f"Failed to delete image from database: {filepath}")
 
     def get_common_color_cache(self, filepath: str) -> list[tuple[int, int, int]] | None:
         sql = f"""
@@ -367,4 +369,4 @@ class Db:
         filepath = filepath.replace("\\", "/")
         ret = self._execute(sql, [json.dumps(color_cache), filepath])
         if ret.rowcount == 0:
-            print(f"Failed to set color cache for image: {filepath}", file=sys.stderr)
+            logger.error(f"Failed to set color cache for image: {filepath}")

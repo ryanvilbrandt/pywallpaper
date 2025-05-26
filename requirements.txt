@@ -3,5 +3,6 @@ Pillow
 pynput
 pystray
 pywin32
+pyyaml
 watchdog
 wxPython

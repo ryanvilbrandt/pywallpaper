@@ -1,0 +1,22 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  default:
+    format: "[%(asctime)s] %(levelname)s in %(name)s: %(message)s"
+
+handlers:
+  file:
+    class: logging.handlers.TimedRotatingFileHandler
+    level: INFO
+    formatter: default
+    filename: "%LOCALAPPDATA%/pywallpaper/logs/main.log"
+    when: midnight         # Rotate at midnight
+    interval: 1            # Every day
+    backupCount: 14        # Keep 14 days of logs
+    encoding: utf-8
+    delay: true
+
+root:
+  level: INFO
+  handlers: [file]
