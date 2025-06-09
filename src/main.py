@@ -774,8 +774,7 @@ class PyWallpaper(wx.Frame):
         if _event:
             # Only advance image if it was in response to a GUI event
             self.advance_image(None, None)
-        self.settings["selected_file_list"] = selected_file_list
-        self.save_settings()
+        self.save_setting("selected_file_list", selected_file_list)
 
     def set_delay(self, _event):
         value = self.delay_value.GetValue()
@@ -790,8 +789,7 @@ class PyWallpaper(wx.Frame):
 
     def set_enable_ephemeral_refresh(self, _event):
         value = self.enable_ephemeral_refresh_checkbox.GetValue()
-        self.settings["enable_ephemeral_refresh"] = value
-        self.save_settings()
+        self.save_setting("enable_ephemeral_refresh", value)
 
     def set_ephemeral_refresh_delay(self, _event):
         value = self.ephemeral_refresh_value.GetValue()
@@ -967,6 +965,8 @@ class PyWallpaper(wx.Frame):
             if not include_subfolders:
                 dir_names.clear()
             for filename in filenames:
+                if filename == "Thumbs.db":
+                    continue
                 ext = os.path.splitext(filename)[1].lower()
                 if ext in allowed_extensions:
                     file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
