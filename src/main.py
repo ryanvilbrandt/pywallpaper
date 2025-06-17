@@ -63,19 +63,20 @@ class PyWallpaper(wx.Frame):
     def __init__(self, debug: bool = False):
         self.init_logger(debug)
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
-        utils.perf()
+        self.perf = utils.PerformanceTimer()
         self.migrate_db()
-        utils.perf("migrate_db")
+        self.perf.inc("migrate_db")
         self.load_config()
-        utils.perf("load_config")
+        self.perf.inc("load_config")
         self.load_gui(debug)
-        utils.perf("load_gui")
+        self.perf.inc("load_gui")
 
         # Set delays from GUI elements
         self.set_delay(None)
         self.set_ephemeral_refresh_delay(None)
 
-    def init_logger(self, debug: bool = False):
+    @staticmethod
+    def init_logger(debug: bool = False):
         # Load logging config file
         with open("conf/logging.yaml", "r") as f:
             raw = f.read()
@@ -201,7 +202,7 @@ class PyWallpaper(wx.Frame):
         with Db() as db:
             image_tables = db.get_image_tables()
         if not image_tables:
-            # No image tables in the DB. Set file list to "default"
+            # No image tables in the DB. Set the file list to "default"
             image_tables = ["default"]
             self.table_name = "images_default"
             self.make_images_table()
@@ -209,7 +210,7 @@ class PyWallpaper(wx.Frame):
         self.file_list_dropdown = wx.ComboBox(p, choices=image_tables, style=wx.CB_READONLY)
         self.file_list_dropdown.Bind(wx.EVT_COMBOBOX, self.select_file_list)
 
-        # Set dropdown to saved file list
+        # Set dropdown to the saved file list
         self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "default"))
         # Select "default" if the selected_file_list option isn't available in the dropdown
         selected_file_list = self.file_list_dropdown.GetValue()
@@ -431,15 +432,15 @@ class PyWallpaper(wx.Frame):
         Runs some setup functions that are not required for GUI initialization.
         This lets the GUI load and become responsive as quickly as possible.
         """
-        utils.perf("start run")
+        self.perf.inc("start run")
         self.cycle_timer = wx.Timer()
         self.cycle_timer.Bind(wx.EVT_TIMER, self.trigger_image_loop)
-        utils.perf("cycle_timer")
+        self.perf.inc("cycle_timer")
         self.trigger_image_loop(None)
-        utils.perf("trigger_image_loop")
+        self.perf.inc("trigger_image_loop")
         self.run_icon_loop()
-        utils.perf("run_icon_loop")
-        utils.log_perf("App Init")
+        self.perf.inc("run_icon_loop")
+        self.perf.output_to_log("App Init")
 
         # Run some functions in threads to not slow down app
         t = threading.Thread(name="run_watchdog", target=self.run_watchdog, daemon=True)

@@ -9,42 +9,42 @@ from numpy.typing import NDArray
 
 from image_utils import convert_image_to_pixels, exclude_pixels_near_white, subsample, Pixel, pixel_to_tuple, \
     sort_means, pixels_to_tuples, downscale_image
-from utils import perf, log_perf
+from utils import PerformanceTimer
 
 logger = logging.getLogger(__name__)
 
 
 def get_common_colors_from_image(img: Image, config: RawConfigParser) -> list[tuple[int, int, int]]:
     try:
-        perf()
+        perf = PerformanceTimer()
 
         max_dim = config.getint("Kmeans", "Max dimension for downscaling", fallback=700)
         if max_dim > 0:
             img = downscale_image(img, max_dim)
-            perf("Downscaling Image:")
+            perf.inc("Downscaling Image:")
 
         pixels = convert_image_to_pixels(img)
-        perf("Convert image:")
+        perf.inc("Convert image:")
 
         subsample_size = config.getint("Kmeans", "Subsample size", fallback=-1)
         if subsample_size > 0:
             pixels = subsample(pixels, subsample_size)
-            perf("Subsample:")
+            perf.inc("Subsample:")
 
         # Exclude points that are too close to white (they're not interesting)
         pixels = exclude_pixels_near_white(
             pixels,
             config.getfloat("Kmeans", "White exclusion threshold"),
         )
-        perf("Exclude pixels:")
+        perf.inc("Exclude pixels:")
 
         means = kmeans(pixels, config)
-        perf("Kmeans:")
+        perf.inc("Kmeans:")
 
         common_colors = sort_means(means)
-        perf("Most common mean:")
+        perf.inc("Most common mean:")
 
-        log_perf(f"Finished finding common color in")
+        perf.output_to_log(f"Finished finding common color in")
 
         return pixels_to_tuples(common_colors)
     except ValueError:

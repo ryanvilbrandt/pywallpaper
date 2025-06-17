@@ -8,7 +8,7 @@ from numpy._typing import NDArray
 
 from image_utils import convert_image_to_pixels, subsample, exclude_pixels_near_white, Pixel, pixels_to_tuples, \
     downscale_image, sort_means
-from utils import perf, log_perf, load_config
+from utils import load_config, PerformanceTimer
 
 logger = logging.getLogger(__name__)
 
@@ -17,27 +17,27 @@ def get_common_colors_from_image(
         img: Image, config: RawConfigParser, show_plot: bool = False
 ) -> list[tuple[int, int, int]]:
     try:
-        perf()
+        perf = PerformanceTimer()
 
         max_dim = config.getint("Mean Shift", "Max dimension for downscaling", fallback=700)
         if max_dim > 0:
             img = downscale_image(img, max_dim)
-            perf("Downscaling Image:")
+            perf.inc("Downscaling Image:")
 
         pixels = convert_image_to_pixels(img)
-        perf("Convert image:")
+        perf.inc("Convert image:")
 
         subsample_size = config.getint("Mean Shift", "Subsample size", fallback=-1)
         if subsample_size > 0:
             pixels = subsample(pixels, subsample_size)
-            perf("Subsample:")
+            perf.inc("Subsample:")
 
         # Exclude points that are too close to white (they're not interesting)
         pixels = exclude_pixels_near_white(
             pixels,
             config.getfloat("Mean Shift", "White exclusion threshold", fallback=100),
         )
-        perf("Exclude pixels:")
+        perf.inc("Exclude pixels:")
 
         cluster_centers = mean_shift_with_removal(
             pixels,
@@ -45,13 +45,13 @@ def get_common_colors_from_image(
             config.getfloat("Mean Shift", "Tolerance", fallback=0.001),
             config.getint("Mean Shift", "Max Iterations", fallback=100),
         )
-        perf("Mean shift:")
+        perf.inc("Mean shift:")
 
         # Sort the colors and counts
         sorted_colors = sort_means(cluster_centers)
-        perf("Sort colors:")
+        perf.inc("Sort colors:")
 
-        log_perf(f"Finished finding common color in")
+        perf.output_to_log("Finished finding common color in")
 
         if show_plot:
             # Plot the dominant colors

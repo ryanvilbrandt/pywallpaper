@@ -8,6 +8,28 @@ logger = logging.getLogger(__name__)
 perf_list = []
 
 
+class PerformanceTimer:
+    """Class to do my own hand-blown performance timing."""
+
+    def __init__(self):
+        self.perf_list = [("Start", perf_counter_ns())]
+
+    def increment(self, title: str):
+        self.perf_list.append((title, perf_counter_ns()))
+
+    inc = increment
+
+    def output_to_log(self, title: str = "Total:"):
+        logger.info("Performance times:")
+        for i, perf_tuple in enumerate(self.perf_list):
+            if i == 0:
+                continue
+            t1, t2 = self.perf_list[i - 1][1], self.perf_list[i][1]
+            logger.info(f"  {perf_tuple[0]} {(t2 - t1) / 1_000_000:.2f} ms")
+        t1, t2 = self.perf_list[0][1], self.perf_list[-1][1]
+        logger.info(f"{title} {(t2 - t1) / 1_000_000:.2f} ms")
+
+
 def perf(title: str = ""):
     global perf_list
     if not title:
