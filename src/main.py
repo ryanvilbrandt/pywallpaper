@@ -20,7 +20,7 @@ import win32evtlog
 import win32evtlogutil
 import wx
 import yaml
-from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError
+from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError, ExifTags
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from wx import Event
@@ -520,6 +520,8 @@ class PyWallpaper(wx.Frame):
         img = Image.open(file_path)
         if img.mode == "P":
             img = img.convert("RGBA")
+        # Reorient the image if needed
+        img = self.reorient_picture(img)
         # Resize and apply to background
         img = self.resize_image_to_bg(
             img,
@@ -537,6 +539,21 @@ class PyWallpaper(wx.Frame):
         temp_file_path = self.temp_image_filename + ext
         img.save(temp_file_path)
         return temp_file_path
+
+    @staticmethod
+    def reorient_picture(img: Image) -> Image:
+        exif = img._getexif()
+        logger.debug(exif)
+        for exif_num, value in exif.items():
+            if ExifTags.TAGS[exif_num] == "Orientation":
+                if value == 3:
+                    img = img.rotate(180, expand=True)
+                elif value == 6:
+                    img = img.rotate(270, expand=True)
+                elif value == 8:
+                    img = img.rotate(90, expand=True)
+                break
+        return img
 
     @staticmethod
     def str_to_color(color: str):
@@ -686,7 +703,7 @@ class PyWallpaper(wx.Frame):
         )
 
     def delete_missing_image(self, file_path: str):
-        # Only delete if the setting was enabled
+        # Only delete the image if the setting is enabled
         if not self.settings.get("delete_missing_images", False):
             return
         # Check if the folder the image is in is accessible. If not, assume it's just a temporary

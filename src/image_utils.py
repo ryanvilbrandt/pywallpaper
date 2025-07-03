@@ -33,7 +33,7 @@ Pixel = NDArray[np.int_]
 
 
 def convert_image_to_pixels(image: Image) -> NDArray[Pixel]:
-    # First paste the image onto a white background, to flatten out any transparency
+    # First, paste the image onto a white background to flatten out any transparency
     bg = Image.new("RGB", image.size, (255, 255, 255))
     bg.paste(image, (0, 0), image if has_transparency(image) else None)
     pixels = np.array(bg)
@@ -86,10 +86,10 @@ def pixel_to_tuple(pixel: Pixel) -> tuple[int, int, int]:
 
 def get_common_color(means: list[tuple[int, int, int]], config_value: str) -> tuple[int, int, int]:
     """
-    Parses config value to determine which common color to use. If the image ends in digits (e.g. kmeans2), use the
+    Parses config value to determine which common color to use. If the image ends in digits (e.g., kmeans2), use the
     number at the end to determine which common color to use. Otherwise, assume index=0.
 
-    The number will be reduced by 1 to determine what index to use. E.g. kmeans2 will use index=1.
+    The number will be reduced by 1 to determine what index to use. E.g., kmeans2 will use index=1.
     """
     m = re.search(r"^.*?(\d+)$", config_value)
     if m:
@@ -107,7 +107,7 @@ def create_random_pixels(n: int) -> NDArray[Pixel]:
 
 
 def downscale_image(image: Image, max_dim: int) -> Image:
-    """Resize image so the largest dimension matches max_dim while keeping aspect ratio."""
+    """Resize the image so the largest dimension matches max_dim while keeping the aspect ratio."""
     width, height = image.size
     scale = max_dim / max(width, height)
     new_size = (int(width * scale), int(height * scale))
