@@ -490,8 +490,38 @@ class PyWallpaper(wx.Frame):
             logger.info(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
         self.original_file_path = self.original_file_path.replace("/", "\\")
         self.set_wallpaper(self.original_file_path, redo_colors)
+        try:
+            test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback="").strip('"')
+            test_mode = bool(test_wallpaper)
+            if test_wallpaper:
+                self.set_wallpaper(test_wallpaper, redo_colors)
+                self.original_file_path = test_wallpaper
+                return
+            if self.original_file_path:
+                self.file_path_history.append(self.original_file_path)
+                self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
+                logger.debug(f"History: {self.file_path_history}")
+            with Db(self.file_list) as db:
+                t1 = time.perf_counter_ns()
+                algorithm = self.config.get("Settings", "Random algorithm").lower()
+                if algorithm == "pure":
+                    self.original_file_path = db.get_random_image(increment=not test_mode)
+                elif algorithm == "weighted":
+                    self.original_file_path = db.get_random_image_with_weighting(increment=not test_mode)
+                elif algorithm == "least used":
+                    self.original_file_path = db.get_random_image_from_least_used(increment=not test_mode)
+                else:
+                    raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
+                t2 = time.perf_counter_ns()
+                logger.info(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
+            self.original_file_path = self.original_file_path.replace("/", "\\")
+            self.set_wallpaper(self.original_file_path, redo_colors)
 
         wx.CallAfter(self.refresh_ephemeral_images)
+            wx.CallAfter(self.refresh_ephemeral_images)
+        except Exception:
+            logger.exception("Exception when trying to pick new wallpaper")
+            wx.CallAfter(self.cycle_timer.StartOnce, self.error_delay)
 
     def set_wallpaper(self, file_path: str, redo_colors: bool = False):
         logger.info(f"Loading {file_path}")
