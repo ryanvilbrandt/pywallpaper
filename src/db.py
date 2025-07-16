@@ -234,7 +234,7 @@ class Db:
 
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""
-        SELECT * FROM {self.table_id} AND is_directory=0 ORDER BY filepath;
+        SELECT * FROM {self.table_id} WHERE is_directory=0 ORDER BY filepath;
         """
         return self._fetch_all(sql)
 
@@ -384,7 +384,7 @@ class Db:
 
     def remove_ephemeral_images(self):
         sql = """
-        DELETE FROM {self.table} WHERE ephemeral=1;
+        DELETE FROM {self.table_id} WHERE ephemeral=1;
         """
         self.cur.execute(sql)
 
