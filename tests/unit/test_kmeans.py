@@ -2,7 +2,7 @@ from unittest import TestCase
 
 import numpy as np
 
-from kmeans import exclude_pixels_near_white, pixels_to_tuples, prune_means
+from src.kmeans import exclude_pixels_near_white, pixels_to_tuples, prune_means
 
 
 class TestKmeans(TestCase):
