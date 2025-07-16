@@ -303,9 +303,6 @@ class Db:
         return filepath
 
     def increment_times_used(self, filepath: str) -> None:
-        # Only update the counters here. Any normalization of the
-        # times_used column is performed separately (e.g. by calling
-        # ``normalize_times_used`` after incrementing).
         sql = f"""
         UPDATE {self.table_id}
         SET times_used = times_used + 1,
