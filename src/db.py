@@ -303,7 +303,6 @@ class Db:
         return filepath
 
     def increment_times_used(self, filepath: str) -> None:
-        # TODO add normalization of times_used values
         sql = f"""
         UPDATE {self.table_id}
         SET times_used = times_used + 1,
