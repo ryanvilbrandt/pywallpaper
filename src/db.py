@@ -19,8 +19,8 @@ class Db:
     def __init__(self, file_list: str = None, filename: str = "database/main.db", auto_commit: bool = True,
                  auto_close: bool = True):
         """
-        :param file_list: If defined, will be used to identify the correct table to do all further queries again.
-            Leave undefined only in cases where querying images tables isn't needed. E.g., during DB migrations
+        :param file_list: If defined, will be used to identify the correct table to do all further queries against.
+            Leave undefined only in cases where querying image tables isn't needed. E.g., during DB migrations
         :param filename:
         :param auto_commit:
         :param auto_close:
