@@ -80,7 +80,7 @@ class FileViewerFrame(wx.Frame):
             self.grid.SetColLabelValue(i, header)
         self.grid.EnableEditing(False)
         self.grid.AutoSizeColumns()
-        self.grid.Bind(gridlib.EVT_GRID_CELL_LEFT_CLICK, self.on_col_header_click)
+        self.grid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.on_col_header_click)
 
         # --- FIX: Add grid to grid_panel's sizer and add grid_panel to main_sizer with proportion=1 ---
         grid_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -157,13 +157,17 @@ class FileViewerFrame(wx.Frame):
         # --- END ---
 
     def on_col_header_click(self, event):
-        col = self.headers[event.GetCol()]
-        if self.sort_column == col:
-            self.sort_ascending = not self.sort_ascending
-        else:
-            self.sort_column = col
-            self.sort_ascending = True
-        self.populate_grid()
+        # Only handle column header clicks, not row labels
+        if event.GetRow() == -1 and event.GetCol() != -1:
+            col = self.headers[event.GetCol()]
+            if self.sort_column == col:
+                self.sort_ascending = not self.sort_ascending
+            else:
+                self.sort_column = col
+                self.sort_ascending = True
+            self.populate_grid()
+            # Prevent default highlight/selection
+            return
         event.Skip()
 
     def populate_grid(self):
