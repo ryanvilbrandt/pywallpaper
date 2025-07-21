@@ -1074,7 +1074,7 @@ class PyWallpaper(wx.Frame):
 
     def remove_image_from_file_list(self, _icon, _item):
         with Db(self.file_list) as db:
-            db.set_image_to_inactive(self.original_file_path)
+            db.set_active_flag(self.original_file_path)
         self.advance_image(_icon, _item)
 
     def delete_image(self, _icon=None, _item=None):

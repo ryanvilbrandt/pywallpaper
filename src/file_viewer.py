@@ -80,9 +80,15 @@ class FileViewerFrame(wx.Frame):
         self.grid.EnableEditing(False)
         self.grid.AutoSizeColumns()
         self.grid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.on_col_header_click)
+        self.grid.Bind(gridlib.EVT_GRID_CELL_LEFT_DCLICK, self.on_grid_cell_dclick)
 
         self.grid.SetColSize(0, 300)  # Set a fixed initial width
         self.grid.SetColMinimalWidth(0, 100)
+
+        # --- Set tooltip for the Active column header ---
+        self.grid.GetGridColLabelWindow().Bind(
+            wx.EVT_MOTION, self.on_grid_col_label_motion
+        )
 
         grid_sizer = wx.BoxSizer(wx.VERTICAL)
         grid_sizer.Add(self.grid, 1, wx.EXPAND)
@@ -295,23 +301,9 @@ class FileViewerFrame(wx.Frame):
     def on_show_ephemeral_images(self, _event):
         self.populate_grid()
 
-    def on_checkbox_change(self, event, filepath, checkbox_type):
-        value = event.GetEventObject().GetValue()
-        if checkbox_type == "is_directory":
-            self.update_is_directory(filepath, value)
-        elif checkbox_type == "active":
-            self.update_active_status(filepath, value)
-        elif checkbox_type == "ephemeral":
-            self.update_ephemeral_status(filepath, value)
-
-    def update_is_directory(self, filepath: str, value: bool):
-        print(f"[DB STUB] Updating is_directory to {value} for {filepath}")
-
-    def update_active_status(self, filepath: str, value: bool):
-        print(f"[DB STUB] Updating active status to {value} for {filepath}")
-
-    def update_ephemeral_status(self, filepath: str, value: bool):
-        print(f"[DB STUB] Updating ephemeral status to {value} for {filepath}")
+    def update_active_status(self, filepath: str, active: bool):
+        with Db(self.parent.file_list) as db:
+            db.set_active_flag(filepath, active)
 
     def on_clear_cache(self, event, filepath):
         print(f"[DB STUB] Clearing cache for: {filepath}")
@@ -375,6 +367,36 @@ class FileViewerFrame(wx.Frame):
         self.current_page = page
         self.page_counter.ChangeValue(str(self.current_page))
         self.populate_grid()
+        event.Skip()
+
+    def on_grid_cell_dclick(self, event):
+        row = event.GetRow()
+        col = event.GetCol()
+        # "Active" column is index 1
+        if col == 1 and row < self.grid.GetNumberRows():
+            current_value = self.grid.GetCellValue(row, col)
+            new_value = "No" if current_value == "Yes" else "Yes"
+            self.grid.SetCellValue(row, col, new_value)
+            # Optionally update the database or backend here
+            # You may want to get the filepath from column 0
+            filepath = self.grid.GetCellValue(row, 0)
+            self.update_active_status(filepath, new_value == "Yes")
+        event.Skip()
+
+    def on_grid_col_label_motion(self, event):
+        # Show tooltip and change cursor only when hovering over the Active column header (index 1)
+        label_window = self.grid.GetGridColLabelWindow()
+        x, y = event.GetPosition()
+        col = self.grid.XToCol(x)
+        if col == 1:  # Active
+            msg = "Double-click an Active cell to toggle its state"
+            cursor = wx.Cursor(wx.CURSOR_QUESTION_ARROW)
+        else:
+            msg = ""
+            cursor = wx.Cursor(wx.CURSOR_ARROW)
+        if label_window.GetToolTipText() != msg:
+            label_window.SetToolTip(msg)
+        label_window.SetCursor(cursor)
         event.Skip()
 
     def on_window_resize(self, event):

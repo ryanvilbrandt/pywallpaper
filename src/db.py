@@ -452,12 +452,12 @@ class Db:
         """
         self._execute(sql, [dir_path + "%"])
 
-    def set_image_to_inactive(self, filepath: str):
+    def set_active_flag(self, filepath: str, active: bool):
         sql = f"""
-        UPDATE {self.table_id} SET active=false WHERE filepath=?;
+        UPDATE {self.table_id} SET active=? WHERE filepath=?;
         """
         filepath = filepath.replace("\\", "/")
-        ret = self._execute(sql, [filepath])
+        ret = self._execute(sql, [active, filepath])
         if ret.rowcount == 0:
             logger.error(f"Failed to set image to inactive: {filepath}")
 
