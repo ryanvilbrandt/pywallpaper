@@ -82,59 +82,60 @@ class FileViewerFrame(wx.Frame):
         self.grid.AutoSizeColumns()
         self.grid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.on_col_header_click)
 
-        # --- FIX: Add grid to grid_panel's sizer and add grid_panel to main_sizer with proportion=1 ---
+        self.grid.SetColSize(0, 300)  # Set a fixed initial width
+        self.grid.SetColMinimalWidth(0, 100)
+
         grid_sizer = wx.BoxSizer(wx.VERTICAL)
         grid_sizer.Add(self.grid, 1, wx.EXPAND)
         self.grid_panel.SetSizer(grid_sizer)
         self.main_sizer.Add(self.grid_panel, 1, wx.EXPAND | wx.ALL, 5)
-        # --- END FIX ---
 
         self.panel.SetSizer(self.main_sizer)
 
         # --- Pagination controls below the grid ---
-        pagination_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.pagination_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # Page size dropdown (left-aligned)
-        pagination_sizer.Add(wx.StaticText(self.panel, label="Page size:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.pagination_sizer.Add(wx.StaticText(self.panel, label="Page size:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         self.page_size_choices = ["25", "50", "100", "200", "500", "1000"]
         self.page_size_choice = wx.Choice(self.panel, choices=self.page_size_choices)
         self.page_size_choice.SetSelection(0)  # Default to 25
-        pagination_sizer.Add(self.page_size_choice, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.pagination_sizer.Add(self.page_size_choice, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 5)
         self.page_size_choice.Bind(wx.EVT_CHOICE, self.on_pagination_change)
 
         # --- Center the page selector and buttons ---
-        pagination_sizer.AddStretchSpacer(1)
+        self.pagination_sizer.AddStretchSpacer(1)
 
-        center_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.center_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         self.first_btn = wx.Button(self.panel, label="◀◀", size=(48, -1))
         self.prev_btn = wx.Button(self.panel, label="◀", size=(32, -1))
-        center_sizer.Add(self.first_btn, 0, wx.LEFT | wx.RIGHT, 2)
-        center_sizer.Add(self.prev_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        self.center_sizer.Add(self.first_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        self.center_sizer.Add(self.prev_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.first_btn.Bind(wx.EVT_BUTTON, self.on_first_page)
         self.prev_btn.Bind(wx.EVT_BUTTON, self.on_prev_page)
 
-        center_sizer.Add(wx.StaticText(self.panel, label="Page:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.center_sizer.Add(wx.StaticText(self.panel, label="Page:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         self.page_counter = wx.TextCtrl(self.panel, value="1", size=(40, -1), style=wx.TE_PROCESS_ENTER)
-        center_sizer.Add(self.page_counter, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 2)
+        self.center_sizer.Add(self.page_counter, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 2)
         self.page_counter.Bind(wx.EVT_TEXT_ENTER, self.on_page_counter_enter)
         self.page_counter.Bind(wx.EVT_KILL_FOCUS, self.on_page_counter_enter)
 
         # Move "of #" label next to the page counter
         self.total_pages_label = wx.StaticText(self.panel, label="of 1")
-        center_sizer.Add(self.total_pages_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 2)
+        self.center_sizer.Add(self.total_pages_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 8)
 
         self.next_btn = wx.Button(self.panel, label="▶", size=(32, -1))
         self.last_btn = wx.Button(self.panel, label="▶▶", size=(48, -1))
-        center_sizer.Add(self.next_btn, 0, wx.LEFT | wx.RIGHT, 2)
-        center_sizer.Add(self.last_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        self.center_sizer.Add(self.next_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        self.center_sizer.Add(self.last_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.next_btn.Bind(wx.EVT_BUTTON, self.on_next_page)
         self.last_btn.Bind(wx.EVT_BUTTON, self.on_last_page)
 
-        pagination_sizer.Add(center_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
-        pagination_sizer.AddStretchSpacer(1)
+        self.pagination_sizer.Add(self.center_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.pagination_sizer.AddStretchSpacer(1)
 
-        self.main_sizer.Add(pagination_sizer, 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 8)
+        self.main_sizer.Add(self.pagination_sizer, 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 8)
         # --- End pagination controls ---
 
         self.populate_grid()
@@ -215,6 +216,10 @@ class FileViewerFrame(wx.Frame):
         self.next_btn.Enable(self.current_page < self.total_pages)
         self.last_btn.Enable(self.current_page < self.total_pages)
 
+        # Relayout the page counter sizers to ensure proper layout after changes
+        self.center_sizer.Layout()
+        self.pagination_sizer.Layout()
+
     def fill_grid(self, data: Iterator[dict]):
         # --- Clear grid ---
         self.grid.BeginBatch()
@@ -240,7 +245,9 @@ class FileViewerFrame(wx.Frame):
         # Fill to minimum 25 rows, just to give the window something to size to.
         self.grid.AppendRows(25 - self.grid.GetNumberRows())
 
-        self.grid.AutoSizeColumns()
+        # Only autosize columns other than Filepath
+        for i in range(1, self.num_columns):
+            self.grid.AutoSizeColumn(i)
         self.grid.EndBatch()
 
     def create_test_data(self):
