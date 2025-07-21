@@ -1,6 +1,7 @@
 from typing import Iterator
 
 import wx
+import wx.grid as gridlib
 
 from db import Db
 
@@ -33,27 +34,46 @@ class FileViewerFrame(wx.Frame):
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.add_files_btn = wx.Button(self.panel, label="Add Files")
         self.add_folder_btn = wx.Button(self.panel, label="Add Folder")
-        self.show_ephemeral_cb = wx.CheckBox(self.panel, label="Show Ephemeral Files")
+        self.show_ephemeral_cb = wx.CheckBox(self.panel, label="Show Ephemeral Files?")
         self.show_ephemeral_cb.SetValue(False)
         self.show_ephemeral_cb.Bind(wx.EVT_CHECKBOX, self.on_show_ephemeral_images)
         controls_sizer.Add(self.add_files_btn, 0, wx.ALL, 5)
         controls_sizer.Add(self.add_folder_btn, 0, wx.ALL, 5)
         controls_sizer.AddStretchSpacer(1)
         controls_sizer.Add(self.show_ephemeral_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # --- Add search bar to the right of the checkbox ---
+        self.search_ctrl = wx.SearchCtrl(self.panel, style=wx.TE_PROCESS_ENTER)
+        self.search_ctrl.ShowSearchButton(True)
+        self.search_ctrl.ShowCancelButton(True)
+        controls_sizer.Add(self.search_ctrl, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # --- Bind search control for delayed search ---
+        self.search_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_search_timer, self.search_timer)
+        self.search_ctrl.Bind(wx.EVT_TEXT, self.on_search_text)
+        self.search_ctrl.Bind(wx.EVT_TEXT_ENTER, self.on_search_enter)
+        # --- End search bar addition ---
+
         self.main_sizer.Add(controls_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
 
-        self.grid_panel = wx.ScrolledWindow(self.panel)
-        self.grid_panel.SetScrollRate(20, 20)
-
-        # Only create the sizer here, headers will be added in fill_grid
+        # --- Replace grid_sizer/grid_panel with wx.Grid ---
         self.headers = [
             "Filepath", "Active", "Is Directory", "Ephemeral", "Times Used", "Total Times Used", "Clear Cache"
         ]
         self.num_columns = len(self.headers)
-        self.grid_sizer = wx.GridBagSizer()
-        self.grid_sizer.AddGrowableCol(0, 1)
 
-        self.grid_panel.SetSizer(self.grid_sizer)
+        self.grid_panel = wx.ScrolledWindow(self.panel)
+        self.grid_panel.SetScrollRate(20, 20)
+        self.grid = gridlib.Grid(self.grid_panel)
+        self.grid.CreateGrid(0, self.num_columns)
+        for i, header in enumerate(self.headers):
+            self.grid.SetColLabelValue(i, header)
+        self.grid.EnableEditing(False)
+        self.grid.AutoSizeColumns()
+        grid_sizer = wx.BoxSizer(wx.VERTICAL)
+        grid_sizer.Add(self.grid, 1, wx.EXPAND)
+        self.grid_panel.SetSizer(grid_sizer)
         self.main_sizer.Add(self.grid_panel, 1, wx.EXPAND | wx.ALL, 5)
 
         self.panel.SetSizer(self.main_sizer)
@@ -66,111 +86,41 @@ class FileViewerFrame(wx.Frame):
     def populate_grid(self):
         with Db(self.parent.file_list) as db:
             data = db.get_rows(
-                include_ephemeral_images=self.show_ephemeral_cb.GetValue()
+                file_path_match=self.search_ctrl.GetValue(),
+                include_ephemeral_images=self.show_ephemeral_cb.GetValue(),
             )
             self.fill_grid(data)
 
     def fill_grid(self, data: Iterator[dict]):
-        # --- Remove all items from the grid sizer (headers and content) ---
-        while self.grid_sizer.GetChildren():
-            item = self.grid_sizer.GetChildren()[0]
-            window = item.GetWindow()
-            sizer = item.GetSizer()
-            # FIX: Detach by window or sizer, not by GBSizerItem
-            if window:
-                self.grid_sizer.Detach(window)
-                window.Destroy()
-            elif sizer:
-                self.grid_sizer.Detach(sizer)
-                # Recursively destroy all windows in the sizer
-                def destroy_sizer(s):
-                    for child in s.GetChildren():
-                        w = child.GetWindow()
-                        cs = child.GetSizer()
-                        if w:
-                            w.Destroy()
-                        elif cs:
-                            destroy_sizer(cs)
-                destroy_sizer(sizer)
-
-        # --- Add headers ---
-        for i, header in enumerate(self.headers):
-            h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-            label = wx.StaticText(self.grid_panel, label=header, style=wx.ALIGN_CENTER)
-            font = label.GetFont()
-            font.SetWeight(wx.FONTWEIGHT_BOLD)
-            label.SetFont(font)
-            h_sizer.Add(wx.Size(5, 0))
-            h_sizer.Add(label, 1, wx.ALIGN_CENTER)
-            h_sizer.Add(wx.Size(5, 0))
-            self.grid_sizer.Add(h_sizer, pos=(0, i), flag=wx.EXPAND)
-
+        # --- Clear grid ---
+        self.grid.BeginBatch()
+        self.grid.ClearGrid()
+        current_rows = self.grid.GetNumberRows()
+        if current_rows > 0:
+            self.grid.DeleteRows(0, current_rows)
         # --- Add data rows ---
-        for row_idx, item in enumerate(data, start=1):  # Start from row 1 (after header)
+        for row_idx, item in enumerate(data):
+            self.grid.AppendRows(1)
             col_idx = 0
-
-            filepath_sizer = wx.BoxSizer(wx.VERTICAL)
-            filepath_text = wx.StaticText(self.grid_panel, label=str(item['filepath']))
-            filepath_sizer.Add(filepath_text, 1, wx.EXPAND | wx.CENTER | wx.ALL, 5)
-            self.grid_sizer.Add(filepath_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
+            self.grid.SetCellValue(row_idx, col_idx, str(item['filepath']))
             col_idx += 1
-
-            active_sizer = wx.BoxSizer(wx.VERTICAL)
-            active_cb = wx.CheckBox(self.grid_panel)
-            active_cb.SetValue(item['active'])
-            active_cb.Bind(wx.EVT_CHECKBOX,
-                          lambda evt, fp=item['filepath']: self.on_checkbox_change(evt, fp, "active"))
-            active_sizer.Add(active_cb, 1, wx.ALIGN_CENTER, 5)
-            self.grid_sizer.Add(active_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
+            self.grid.SetCellValue(row_idx, col_idx, "Yes" if item['active'] else "No")
             col_idx += 1
-
-            is_dir_sizer = wx.BoxSizer(wx.VERTICAL)
-            is_dir_cb = wx.CheckBox(self.grid_panel)
-            is_dir_cb.SetValue(item['is_directory'])
-            is_dir_cb.Disable()  # Disable the checkbox
-            is_dir_cb.Bind(wx.EVT_CHECKBOX,
-                          lambda evt, fp=item['filepath']: self.on_checkbox_change(evt, fp, "is_directory"))
-            is_dir_sizer.Add(is_dir_cb, 1, wx.ALIGN_CENTER, 5)
-            self.grid_sizer.Add(is_dir_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
+            self.grid.SetCellValue(row_idx, col_idx, "Yes" if item['is_directory'] else "No")
             col_idx += 1
-
-            ephemeral_sizer = wx.BoxSizer(wx.VERTICAL)
-            ephemeral_cb = wx.CheckBox(self.grid_panel)
-            ephemeral_cb.SetValue(item['ephemeral'])
-            ephemeral_cb.Disable()  # Disable the checkbox
-            ephemeral_cb.Bind(wx.EVT_CHECKBOX,
-                          lambda evt, fp=item['filepath']: self.on_checkbox_change(evt, fp, "ephemeral"))
-            ephemeral_sizer.Add(ephemeral_cb, 1, wx.ALIGN_CENTER, 5)
-            self.grid_sizer.Add(ephemeral_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
+            self.grid.SetCellValue(row_idx, col_idx, "Yes" if item['ephemeral'] else "No")
             col_idx += 1
-
-            times_sizer = wx.BoxSizer(wx.VERTICAL)
-            times_text = wx.StaticText(self.grid_panel, label=str(item['times_used']))
-            times_sizer.AddStretchSpacer(1)
-            times_sizer.Add(times_text, 0, wx.ALIGN_CENTER_HORIZONTAL, 5)
-            times_sizer.AddStretchSpacer(1)
-            self.grid_sizer.Add(times_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
+            self.grid.SetCellValue(row_idx, col_idx, str(item['times_used']))
             col_idx += 1
-
-            total_sizer = wx.BoxSizer(wx.VERTICAL)
-            total_text = wx.StaticText(self.grid_panel, label=str(item['total_times_used']))
-            total_sizer.AddStretchSpacer(1)
-            total_sizer.Add(total_text, 0, wx.ALIGN_CENTER_HORIZONTAL, 5)
-            total_sizer.AddStretchSpacer(1)
-            self.grid_sizer.Add(total_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
+            self.grid.SetCellValue(row_idx, col_idx, str(item['total_times_used']))
             col_idx += 1
-
-            clear_sizer = wx.BoxSizer(wx.VERTICAL)
-            clear_btn = wx.Button(self.grid_panel, label="Clear", size=(40, -1))
-            clear_btn.Bind(wx.EVT_BUTTON,
-                         lambda evt, fp=item['filepath']: self.on_clear_cache(evt, fp))
-            clear_sizer.Add(clear_btn, 1, wx.ALIGN_CENTER, 5)
-            self.grid_sizer.Add(clear_sizer, pos=(row_idx, col_idx), flag=wx.EXPAND, border=1)
-
+            self.grid.SetCellValue(row_idx, col_idx, "Clear")
+            # Optionally: set cell as read-only or style as needed
+            # self.grid.SetReadOnly(row_idx, col_idx)
             if row_idx >= 50:
                 break
-
-        self.grid_panel.Layout()
+        self.grid.AutoSizeColumns()
+        self.grid.EndBatch()
 
     def create_test_data(self):
         import random
@@ -203,7 +153,7 @@ class FileViewerFrame(wx.Frame):
             # Generate usage counts
             times_used = 0 if is_dir else random.randint(0, 20)
             total_times_used = times_used
-            if times_used > 0 and random.random() < 0.7:  # 70% chance of having more total uses than current uses
+            if times_used > 0 and random.random() < 0.7: # 70% chance of having more total uses than current uses
                 total_times_used += random.randint(1, 15)
 
             # Add to result
@@ -242,6 +192,23 @@ class FileViewerFrame(wx.Frame):
     def on_clear_cache(self, event, filepath):
         print(f"[DB STUB] Clearing cache for: {filepath}")
         wx.MessageBox(f"Clearing cache for: {filepath}", "Clear Cache")
+
+    def on_search_text(self, event):
+        # Restart the timer every time text changes
+        if self.search_timer.IsRunning():
+            self.search_timer.Stop()
+        self.search_timer.Start(1000, oneShot=True)
+        event.Skip()
+
+    def on_search_timer(self, _event):
+        self.populate_grid()
+
+    def on_search_enter(self, event):
+        # Cancel timer and search immediately
+        if self.search_timer.IsRunning():
+            self.search_timer.Stop()
+        self.populate_grid()
+        event.Skip()
 
 
 if __name__ == '__main__':

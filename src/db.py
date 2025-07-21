@@ -232,12 +232,21 @@ class Db:
         """
         return [row["name"] for row in self._fetch_all(sql)]
 
-    def get_rows(self, is_active: bool = None, is_directory: bool = None, include_ephemeral_images: bool = False) -> Iterator[dict]:
+    def get_rows(
+            self,
+            file_path_match: str = None,
+            is_active: bool = None,
+            is_directory: bool = None,
+            include_ephemeral_images: bool = False,
+    ) -> Iterator[dict]:
         sql = f"""
         SELECT * FROM {self.table_id}
         WHERE TRUE
         """
         params = []
+        if file_path_match is not None:
+            sql += "AND filepath LIKE ?\n"
+            params.append('%' + file_path_match + '%')
         if is_active is not None:
             sql += "AND active=?\n"
             params.append(is_active)
