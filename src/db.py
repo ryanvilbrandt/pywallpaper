@@ -33,7 +33,7 @@ class Db:
     def __enter__(self):
         self.connect()
         if self.file_list is not None:
-            self.table_id = self.get_table_id()
+            self.table_id = self.get_table_id(self.file_list)
             if self.table_id is None:
                 self.make_images_table()
         return self
@@ -68,25 +68,25 @@ class Db:
             d[col[0]] = row[i]
         return d
 
-    def _execute(self, sql, params=None) -> Cursor:
+    def _execute(self, sql, params: list[str] = None) -> Cursor:
         args = [sql]
         if params is not None:
             args.append(params)
         return self.cur.execute(*args)
 
-    def _scalar(self, sql, params=None) -> Union[str, int, bool, None]:
+    def _scalar(self, sql, params: list[str] = None) -> Union[str, int, bool, None]:
         result = self._execute(sql, params).fetchone()
         if result is None:
             return None
         return result[0]
 
-    def _fetch_one(self, sql, params=None) -> Optional[dict]:
+    def _fetch_one(self, sql, params: list[str] = None) -> Optional[dict]:
         result = self._execute(sql, params).fetchone()
         if result is None:
             return None
         return self._row_to_dict(result)
 
-    def _fetch_all(self, sql, params=None) -> Iterator[dict]:
+    def _fetch_all(self, sql, params: list[str] = None) -> Iterator[dict]:
         for row in self._execute(sql, params).fetchall():
             yield self._row_to_dict(row)
 
@@ -186,13 +186,13 @@ class Db:
 
     # IMAGES
 
-    def get_table_id(self):
+    def get_table_id(self, file_list: str) -> str:
         sql = """
             SELECT table_id 
             FROM file_lists 
             WHERE name=?
         """
-        return self._scalar(sql, (self.file_list,))
+        return self._scalar(sql, (file_list,))
 
     def make_images_table(self):
         normalized_name = re.sub(r"[^a-z_]", "", self.file_list.lower().replace(" ", "_"))
@@ -231,6 +231,24 @@ class Db:
         SELECT name FROM file_lists
         """
         return [row["name"] for row in self._fetch_all(sql)]
+
+    def get_rows(self, is_active: bool = None, is_directory: bool = None, include_ephemeral_images: bool = False) -> Iterator[dict]:
+        sql = f"""
+        SELECT * FROM {self.table_id}
+        WHERE TRUE
+        """
+        params = []
+        if is_active is not None:
+            sql += "AND active=?\n"
+            params.append(is_active)
+        if is_directory is not None:
+            sql += "AND is_directory=?\n"
+            params.append(is_directory)
+        if not include_ephemeral_images:
+            sql += "AND ephemeral=?\n"
+            params.append(False)
+        sql += "ORDER BY filepath;"
+        return self._fetch_all(sql, params)
 
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""
