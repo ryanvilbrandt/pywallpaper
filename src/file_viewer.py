@@ -67,8 +67,7 @@ class FileViewerFrame(wx.Frame):
 
         # --- Replace grid_sizer/grid_panel with wx.Grid ---
         self.headers = [
-            "Filepath", "Active", "Is Directory", "Incl. Subdirs", "Ephemeral", "Times Used", "Total Times Used",
-            "Clear Cache"
+            "Filepath", "Active", "Is Directory", "Incl. Subdirs", "Ephemeral", "Times Used", "Total Times Used"
         ]
         self.num_columns = len(self.headers)
 
@@ -147,14 +146,12 @@ class FileViewerFrame(wx.Frame):
         # Use the grid's best size to set the frame size if it's larger than the current size
         best_grid_size = self.grid.GetBestSize()
         grid_width, grid_height = best_grid_size.GetWidth(), best_grid_size.GetHeight()
-        # Set padding so 857x507 becomes 883x633 (width +26, height +126)
         extra_width = 26
         extra_height = 126
         target_width = grid_width + extra_width
         target_height = grid_height + extra_height
         self.SetSize(wx.Size(target_width, target_height))
         self.Centre()
-        print("883x633")
         # --- END ---
 
     def on_col_header_click(self, event):
@@ -242,8 +239,8 @@ class FileViewerFrame(wx.Frame):
                 self.grid.SetCellValue(row_idx, 6, str(item['total_times_used']))
             self.grid.SetCellValue(row_idx, 7, "Clear")
 
-        # Fill to minimum 25 rows, just to give the window something to size to.
-        self.grid.AppendRows(25 - self.grid.GetNumberRows())
+        # Fill to page size to give the window something to size to.
+        self.grid.AppendRows(self.page_size - self.grid.GetNumberRows())
 
         # Only autosize columns other than Filepath
         for i in range(1, self.num_columns):
