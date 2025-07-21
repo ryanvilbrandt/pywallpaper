@@ -237,7 +237,6 @@ class FileViewerFrame(wx.Frame):
                 self.grid.SetCellValue(row_idx, 4, "Yes" if item['ephemeral'] else "No")
                 self.grid.SetCellValue(row_idx, 5, str(item['times_used']))
                 self.grid.SetCellValue(row_idx, 6, str(item['total_times_used']))
-            self.grid.SetCellValue(row_idx, 7, "Clear")
 
         # Fill to page size to give the window something to size to.
         self.grid.AppendRows(self.page_size - self.grid.GetNumberRows())
