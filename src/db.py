@@ -7,7 +7,7 @@ import string
 from collections import OrderedDict, defaultdict
 from random import choice, choices
 from sqlite3 import Cursor, OperationalError
-from typing import Optional, Iterator, Union, Sequence
+from typing import Optional, Iterator, Union, Sequence, Any
 
 logger = logging.getLogger(__name__)
 
@@ -232,19 +232,49 @@ class Db:
         """
         return [row["name"] for row in self._fetch_all(sql)]
 
-    def get_rows(
-            self,
-            file_path_match: str = None,
-            is_active: bool = None,
-            is_directory: bool = None,
-            include_ephemeral_images: bool = False,
-    ) -> Iterator[dict]:
+    def get_rows(self, sort_key: str, sort_asc: bool, offset: int, limit: int, **kwargs) -> Iterator[dict]:
         sql = f"""
         SELECT * FROM {self.table_id}
         WHERE TRUE
         """
+        filter_sql, params = self._add_rows_filter(**kwargs)
+        sql += filter_sql
+
+        # Map header to DB column
+        sort_column_map = {
+            "Active": "active",
+            "Is Directory": "is_directory",
+            "Incl. Subdirs": "include_subdirectories",
+            "Ephemeral": "ephemeral",
+            "Times Used": "times_used",
+            "Total Times Used": "total_times_used",
+        }
+        order_by = sort_column_map.get(sort_key, "filepath")
+        sql += f"""
+        ORDER BY {order_by} {"DESC" if not sort_asc else ""}
+        LIMIT {limit} OFFSET {offset};
+        """
+        return self._fetch_all(sql, params)
+
+    def get_row_count(self, **kwargs) -> int:
+        sql = f"""
+        SELECT COUNT(*) FROM {self.table_id}
+        WHERE TRUE
+        """
+        filter_sql, params = self._add_rows_filter(**kwargs)
+        sql += filter_sql
+        return self._scalar(sql, params)
+
+    @staticmethod
+    def _add_rows_filter(
+            file_path_match: str = None,
+            is_active: bool = None,
+            is_directory: bool = None,
+            include_ephemeral_images: bool = False,
+    ) -> tuple[str, list[Any]]:
+        sql = ""
         params = []
-        if file_path_match is not None:
+        if file_path_match:
             sql += "AND filepath LIKE ?\n"
             params.append('%' + file_path_match + '%')
         if is_active is not None:
@@ -256,8 +286,7 @@ class Db:
         if not include_ephemeral_images:
             sql += "AND ephemeral=?\n"
             params.append(False)
-        sql += "ORDER BY filepath;"
-        return self._fetch_all(sql, params)
+        return sql, params
 
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""

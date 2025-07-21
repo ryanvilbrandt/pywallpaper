@@ -21,7 +21,15 @@ class FileViewerApp(wx.App):
 class FileViewerFrame(wx.Frame):
     def __init__(self, parent, title):
         self.parent = parent
-        super().__init__(None, title=title, size=wx.Size(800, 600))
+
+        self.current_page = 1
+        self.total_pages = 1
+        self.sort_column = "Filepath"  # Default sort by filepath
+        self.sort_ascending = True
+
+        super().__init__(None, title=title)
+
+        # self.Bind(wx.EVT_SIZE, self.on_window_resize)
 
         self.init_gui()
 
@@ -59,7 +67,8 @@ class FileViewerFrame(wx.Frame):
 
         # --- Replace grid_sizer/grid_panel with wx.Grid ---
         self.headers = [
-            "Filepath", "Active", "Is Directory", "Ephemeral", "Times Used", "Total Times Used", "Clear Cache"
+            "Filepath", "Active", "Is Directory", "Incl. Subdirs", "Ephemeral", "Times Used", "Total Times Used",
+            "Clear Cache"
         ]
         self.num_columns = len(self.headers)
 
@@ -71,25 +80,136 @@ class FileViewerFrame(wx.Frame):
             self.grid.SetColLabelValue(i, header)
         self.grid.EnableEditing(False)
         self.grid.AutoSizeColumns()
+        self.grid.Bind(gridlib.EVT_GRID_CELL_LEFT_CLICK, self.on_col_header_click)
+
+        # --- FIX: Add grid to grid_panel's sizer and add grid_panel to main_sizer with proportion=1 ---
         grid_sizer = wx.BoxSizer(wx.VERTICAL)
         grid_sizer.Add(self.grid, 1, wx.EXPAND)
         self.grid_panel.SetSizer(grid_sizer)
         self.main_sizer.Add(self.grid_panel, 1, wx.EXPAND | wx.ALL, 5)
+        # --- END FIX ---
 
         self.panel.SetSizer(self.main_sizer)
 
+        # --- Pagination controls below the grid ---
+        pagination_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        # Page size dropdown (left-aligned)
+        pagination_sizer.Add(wx.StaticText(self.panel, label="Page size:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.page_size_choices = ["25", "50", "100", "200", "500", "1000"]
+        self.page_size_choice = wx.Choice(self.panel, choices=self.page_size_choices)
+        self.page_size_choice.SetSelection(0)  # Default to 25
+        pagination_sizer.Add(self.page_size_choice, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.page_size_choice.Bind(wx.EVT_CHOICE, self.on_pagination_change)
+
+        # --- Center the page selector and buttons ---
+        pagination_sizer.AddStretchSpacer(1)
+
+        center_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        self.first_btn = wx.Button(self.panel, label="◀◀", size=(48, -1))
+        self.prev_btn = wx.Button(self.panel, label="◀", size=(32, -1))
+        center_sizer.Add(self.first_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        center_sizer.Add(self.prev_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        self.first_btn.Bind(wx.EVT_BUTTON, self.on_first_page)
+        self.prev_btn.Bind(wx.EVT_BUTTON, self.on_prev_page)
+
+        center_sizer.Add(wx.StaticText(self.panel, label="Page:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.page_counter = wx.TextCtrl(self.panel, value="1", size=(40, -1), style=wx.TE_PROCESS_ENTER)
+        center_sizer.Add(self.page_counter, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 2)
+        self.page_counter.Bind(wx.EVT_TEXT_ENTER, self.on_page_counter_enter)
+        self.page_counter.Bind(wx.EVT_KILL_FOCUS, self.on_page_counter_enter)
+
+        # Move "of #" label next to the page counter
+        self.total_pages_label = wx.StaticText(self.panel, label="of 1")
+        center_sizer.Add(self.total_pages_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 2)
+
+        self.next_btn = wx.Button(self.panel, label="▶", size=(32, -1))
+        self.last_btn = wx.Button(self.panel, label="▶▶", size=(48, -1))
+        center_sizer.Add(self.next_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        center_sizer.Add(self.last_btn, 0, wx.LEFT | wx.RIGHT, 2)
+        self.next_btn.Bind(wx.EVT_BUTTON, self.on_next_page)
+        self.last_btn.Bind(wx.EVT_BUTTON, self.on_last_page)
+
+        pagination_sizer.Add(center_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
+        pagination_sizer.AddStretchSpacer(1)
+
+        self.main_sizer.Add(pagination_sizer, 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 8)
+        # --- End pagination controls ---
+
         self.populate_grid()
 
+        # --- Ensure the window grows to fit the grid on first load ---
+        self.panel.Layout()
         self.Layout()
-        self.Fit()
+        self.grid_panel.FitInside()
+        # Use the grid's best size to set the frame size if it's larger than the current size
+        best_grid_size = self.grid.GetBestSize()
+        grid_width, grid_height = best_grid_size.GetWidth(), best_grid_size.GetHeight()
+        # Set padding so 857x507 becomes 883x633 (width +26, height +126)
+        extra_width = 26
+        extra_height = 126
+        target_width = grid_width + extra_width
+        target_height = grid_height + extra_height
+        self.SetSize(wx.Size(target_width, target_height))
+        self.Centre()
+        print("883x633")
+        # --- END ---
+
+    def on_col_header_click(self, event):
+        col = self.headers[event.GetCol()]
+        if self.sort_column == col:
+            self.sort_ascending = not self.sort_ascending
+        else:
+            self.sort_column = col
+            self.sort_ascending = True
+        self.populate_grid()
+        event.Skip()
 
     def populate_grid(self):
+        # --- Pagination logic ---
+        try:
+            page_size = int(self.page_size_choice.GetStringSelection())
+        except Exception:
+            page_size = 25
+        try:
+            page = int(self.page_counter.GetValue())
+        except Exception:
+            page = 1
+        if page < 1:
+            page = 1
+        self.current_page = page
+        self.page_size = page_size
+
         with Db(self.parent.file_list) as db:
-            data = db.get_rows(
+            # Get total count for pagination
+            total_count = db.get_row_count(
                 file_path_match=self.search_ctrl.GetValue(),
                 include_ephemeral_images=self.show_ephemeral_cb.GetValue(),
             )
+            self.total_pages = max(1, (total_count + page_size - 1) // page_size)
+            # Clamp current page
+            if self.current_page > self.total_pages:
+                self.current_page = self.total_pages
+            self.page_counter.ChangeValue(str(self.current_page))
+            self.total_pages_label.SetLabel(f"of {self.total_pages}")
+
+            # Get paged data
+            data = db.get_rows(
+                file_path_match=self.search_ctrl.GetValue(),
+                include_ephemeral_images=self.show_ephemeral_cb.GetValue(),
+                sort_key=self.sort_column,
+                sort_asc=self.sort_ascending,
+                offset=(self.current_page - 1) * page_size,
+                limit=page_size,
+            )
             self.fill_grid(data)
+
+        # Enable/disable navigation buttons
+        self.first_btn.Enable(self.current_page > 1)
+        self.prev_btn.Enable(self.current_page > 1)
+        self.next_btn.Enable(self.current_page < self.total_pages)
+        self.last_btn.Enable(self.current_page < self.total_pages)
 
     def fill_grid(self, data: Iterator[dict]):
         # --- Clear grid ---
@@ -98,27 +218,24 @@ class FileViewerFrame(wx.Frame):
         current_rows = self.grid.GetNumberRows()
         if current_rows > 0:
             self.grid.DeleteRows(0, current_rows)
+
         # --- Add data rows ---
         for row_idx, item in enumerate(data):
             self.grid.AppendRows(1)
-            col_idx = 0
-            self.grid.SetCellValue(row_idx, col_idx, str(item['filepath']))
-            col_idx += 1
-            self.grid.SetCellValue(row_idx, col_idx, "Yes" if item['active'] else "No")
-            col_idx += 1
-            self.grid.SetCellValue(row_idx, col_idx, "Yes" if item['is_directory'] else "No")
-            col_idx += 1
-            self.grid.SetCellValue(row_idx, col_idx, "Yes" if item['ephemeral'] else "No")
-            col_idx += 1
-            self.grid.SetCellValue(row_idx, col_idx, str(item['times_used']))
-            col_idx += 1
-            self.grid.SetCellValue(row_idx, col_idx, str(item['total_times_used']))
-            col_idx += 1
-            self.grid.SetCellValue(row_idx, col_idx, "Clear")
-            # Optionally: set cell as read-only or style as needed
-            # self.grid.SetReadOnly(row_idx, col_idx)
-            if row_idx >= 50:
-                break
+            self.grid.SetCellValue(row_idx, 0, str(item['filepath']))
+            self.grid.SetCellValue(row_idx, 1, "Yes" if item['active'] else "No")
+            self.grid.SetCellValue(row_idx, 2, "Yes" if item['is_directory'] else "No")
+            if item['is_directory']:
+                self.grid.SetCellValue(row_idx, 3, "Yes" if item['include_subdirectories'] else "No")
+            else:
+                self.grid.SetCellValue(row_idx, 4, "Yes" if item['ephemeral'] else "No")
+                self.grid.SetCellValue(row_idx, 5, str(item['times_used']))
+                self.grid.SetCellValue(row_idx, 6, str(item['total_times_used']))
+            self.grid.SetCellValue(row_idx, 7, "Clear")
+
+        # Fill to minimum 25 rows, just to give the window something to size to.
+        self.grid.AppendRows(25 - self.grid.GetNumberRows())
+
         self.grid.AutoSizeColumns()
         self.grid.EndBatch()
 
@@ -208,6 +325,54 @@ class FileViewerFrame(wx.Frame):
         if self.search_timer.IsRunning():
             self.search_timer.Stop()
         self.populate_grid()
+        event.Skip()
+
+    def on_pagination_change(self, event):
+        self.current_page = 1
+        self.page_counter.ChangeValue("1")
+        self.populate_grid()
+
+    def on_first_page(self, event):
+        if self.current_page != 1:
+            self.current_page = 1
+            self.page_counter.ChangeValue("1")
+            self.populate_grid()
+
+    def on_prev_page(self, event):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.page_counter.ChangeValue(str(self.current_page))
+            self.populate_grid()
+
+    def on_next_page(self, event):
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self.page_counter.ChangeValue(str(self.current_page))
+            self.populate_grid()
+
+    def on_last_page(self, event):
+        if self.current_page != self.total_pages:
+            self.current_page = self.total_pages
+            self.page_counter.ChangeValue(str(self.current_page))
+            self.populate_grid()
+
+    def on_page_counter_enter(self, event):
+        try:
+            page = int(self.page_counter.GetValue())
+        except Exception:
+            page = 1
+        if page < 1:
+            page = 1
+        elif page > self.total_pages:
+            page = self.total_pages
+        self.current_page = page
+        self.page_counter.ChangeValue(str(self.current_page))
+        self.populate_grid()
+        event.Skip()
+
+    def on_window_resize(self, event):
+        size = self.GetSize()
+        print(f"Window resized: {size.GetWidth()}x{size.GetHeight()}")
         event.Skip()
 
 
