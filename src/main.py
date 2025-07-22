@@ -961,14 +961,22 @@ class PyWallpaper(wx.Frame):
             self.running_ephemeral_image_refresh = True
             with Db(self.file_list) as db:
                 folders = list(db.get_active_folders())
+                new_file_paths = []
                 for folder in folders:
                     logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
                     if folder["is_eagle_directory"]:
-                        file_paths = self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
+                        new_file_paths += self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
                     else:
-                        file_paths = self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
-                    if file_paths:
-                        db.add_images(file_paths, ephemeral=True)
+                        new_file_paths += self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
+                new_file_paths = set(new_file_paths)
+                ephemeral_images = db.get_all_ephemeral_images()
+                existing_file_paths = set([f["filepath"] for f in ephemeral_images])
+                file_paths_to_add = new_file_paths.difference(existing_file_paths)
+                if file_paths_to_add:
+                    db.add_images(file_paths_to_add, ephemeral=True)
+                file_paths_to_hide = existing_file_paths.difference(new_file_paths)
+                if file_paths_to_hide:
+                    db.hide_images(file_paths_to_hide)
         finally:
             self.running_ephemeral_image_refresh = False
             self.last_ephemeral_image_refresh = time.time()

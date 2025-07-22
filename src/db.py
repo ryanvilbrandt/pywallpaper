@@ -102,6 +102,8 @@ class Db:
             self.version3()
         if version < 4:
             self.version4()
+        if version < 5:
+            self.version5()
 
     def get_version(self) -> int:
         sql = "SELECT version FROM version;"
@@ -112,6 +114,7 @@ class Db:
             return 0
 
     def version1(self):
+        print("Apply DB migration version 1...")
         sql = """
         CREATE TABLE IF NOT EXISTS version (
             version INTEGER
@@ -121,6 +124,7 @@ class Db:
         self.cur.executescript(sql)
 
     def version2(self):
+        print("Apply DB migration version 2...")
         image_tables = self.get_image_tables()
         if image_tables is not None:
             for table_name in image_tables:
@@ -136,6 +140,7 @@ class Db:
         self._execute(sql)
 
     def version3(self):
+        print("Apply DB migration version 3...")
         image_tables = self.get_image_tables()
         if image_tables is not None:
             for table_name in image_tables:
@@ -150,6 +155,7 @@ class Db:
         self._execute(sql)
 
     def version4(self):
+        print("Apply DB migration version 4...")
         # Create file_lists table
         self._execute("""
         CREATE TABLE IF NOT EXISTS file_lists
@@ -184,6 +190,23 @@ class Db:
         UPDATE version SET version=4;
         """)
 
+    def version5(self):
+        print("Apply DB migration version 5...")
+        """Add hidden column to image tables"""
+        
+        # Find all tables starting with "image_"
+        image_tables = self._fetch_all("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'image_%';")
+        image_tables = [row["name"] for row in image_tables]
+
+        for name in image_tables:
+            self._execute(f"""
+            ALTER TABLE {name} ADD COLUMN hidden BOOLEAN DEFAULT FALSE;
+            """)
+
+        self._execute("""
+        UPDATE version SET version=5;
+        """)
+
     # IMAGES
 
     def get_table_id(self, file_list: str) -> str:
@@ -213,6 +236,7 @@ class Db:
             is_directory BOOLEAN DEFAULT FALSE,
             include_subdirectories BOOLEAN DEFAULT FALSE,
             ephemeral BOOLEAN DEFAULT FALSE,
+            hidden BOOLEAN DEFAULT FALSE,
             is_eagle_directory BOOLEAN DEFAULT FALSE,
             eagle_folder_data TEXT DEFAULT NULL,
             color_cache JSON DEFAULT NULL
@@ -270,6 +294,7 @@ class Db:
             file_path_match: str = None,
             is_active: bool = None,
             is_directory: bool = None,
+            is_hidden: bool = None,
             include_ephemeral_images: bool = False,
     ) -> tuple[str, list[Any]]:
         sql = ""
@@ -283,6 +308,9 @@ class Db:
         if is_directory is not None:
             sql += "AND is_directory=?\n"
             params.append(is_directory)
+        if is_hidden is not None:
+            sql += "AND hidden=?\n"
+            params.append(is_hidden)
         if not include_ephemeral_images:
             sql += "AND ephemeral=?\n"
             params.append(False)
@@ -290,25 +318,34 @@ class Db:
 
     def get_all_images(self) -> Iterator[dict]:
         sql = f"""
-        SELECT * FROM {self.table_id} WHERE is_directory=0 ORDER BY filepath;
+        SELECT * FROM {self.table_id} WHERE is_directory=0 AND hidden=0 ORDER BY filepath;
         """
         return self._fetch_all(sql)
 
     def get_all_active_images(self) -> Iterator[dict]:
         sql = f"""
-        SELECT * FROM {self.table_id} WHERE active=1 AND is_directory=0;
+        SELECT * FROM {self.table_id} WHERE active=1 AND is_directory=0 AND hidden=0;
         """
         return self._fetch_all(sql)
 
     def get_all_active_count(self) -> int:
         sql = f"""
-        SELECT COUNT(*) FROM {self.table_id} WHERE active=1 AND is_directory=0;
+        SELECT COUNT(*) FROM {self.table_id} WHERE active=1 AND is_directory=0 AND hidden=0;
         """
         return self._scalar(sql)
 
+    def get_all_ephemeral_images(self) -> Iterator[dict]:
+        sql = f"""
+        SELECT * FROM {self.table_id} WHERE ephemeral=1 AND is_directory=0 AND hidden=0;
+        """
+        return self._fetch_all(sql)
+
     def get_random_image(self, increment: bool = True) -> str:
         sql = f"""
-        SELECT filepath FROM {self.table_id} WHERE active=1 AND is_directory=0 ORDER BY RANDOM() LIMIT 1;
+        SELECT filepath
+        FROM {self.table_id}
+        WHERE active=1 AND is_directory=0 AND hidden=0
+        ORDER BY RANDOM() LIMIT 1;
         """
         result = self._fetch_one(sql)
         filepath = result["filepath"]
@@ -322,7 +359,7 @@ class Db:
         sql = f"""
         SELECT filepath, times_used 
         FROM {self.table_id} 
-        WHERE active=1 AND is_directory=0;
+        WHERE active=1 AND is_directory=0 AND hidden=0;
         """
         images = self.cur.execute(sql).fetchall()
         # Break out filepaths and times_used into their own lists
@@ -342,7 +379,7 @@ class Db:
         sql = f"""
         SELECT filepath, times_used 
         FROM {self.table_id} 
-        WHERE active=1 AND is_directory=0;
+        WHERE active=1 AND is_directory=0 AND hidden=0;
         """
         images = self.cur.execute(sql).fetchall()
         # Sort into buckets by times used
@@ -383,7 +420,7 @@ class Db:
     def get_active_folders(self) -> Iterator[dict]:
         sql = f"""
         SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_data 
-        FROM {self.table_id} WHERE active=1 AND is_directory=1;
+        FROM {self.table_id} WHERE active=1 AND is_directory=1 AND hidden=0;
         """
         return self._fetch_all(sql)
 
@@ -399,7 +436,7 @@ class Db:
         sql = f"""
         INSERT INTO {self.table_id}(filepath, ephemeral)
         VALUES (?, ?)
-        ON CONFLICT (filepath) DO NOTHING;
+        ON CONFLICT(filepath) DO UPDATE SET hidden=FALSE;
         """
         self.cur.executemany(sql, [(f, ephemeral) for f in filepaths])
 
@@ -436,6 +473,14 @@ class Db:
         """
         self.cur.execute(sql, [json.dumps(d), eagle_library_path])
         return d
+
+    def hide_images(self, filepaths: Sequence[str]):
+        sql = f"""
+        UPDATE {self.table_id}
+        SET hidden=TRUE
+        WHERE filepath IN ({','.join(['?'] * len(filepaths))});
+        """
+        self.cur.execute(sql, list(filepaths))
 
     def remove_ephemeral_images(self):
         sql = """

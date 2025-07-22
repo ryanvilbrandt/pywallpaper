@@ -193,6 +193,7 @@ class FileViewerFrame(wx.Frame):
             # Get total count for pagination
             total_count = db.get_row_count(
                 file_path_match=self.search_ctrl.GetValue(),
+                is_hidden=False,
                 include_ephemeral_images=self.show_ephemeral_cb.GetValue(),
             )
             self.total_pages = max(1, (total_count + page_size - 1) // page_size)
@@ -205,6 +206,7 @@ class FileViewerFrame(wx.Frame):
             # Get paged data
             data = db.get_rows(
                 file_path_match=self.search_ctrl.GetValue(),
+                is_hidden=False,
                 include_ephemeral_images=self.show_ephemeral_cb.GetValue(),
                 sort_key=self.sort_column,
                 sort_asc=self.sort_ascending,
@@ -252,58 +254,14 @@ class FileViewerFrame(wx.Frame):
             self.grid.AutoSizeColumn(i)
         self.grid.EndBatch()
 
-    def create_test_data(self):
-        import random
-
-        # Define possible file types and paths for random generation
-        file_types = ['.jpg', '.png', '.gif', '.bmp', '.tiff']
-        base_paths = ['/home/user/pictures', '/media/external', '/data/photos', '/projects/assets']
-        folder_names = ['vacation', 'work', 'family', 'nature', 'screenshots', 'wallpapers']
-
-        result = []
-        for i in range(50):
-            # Decide if this will be a directory or file
-            is_dir = random.random() < 0.2  # 20% chance of being a directory
-
-            # Create the filepath
-            base_path = random.choice(base_paths)
-            if is_dir:
-                filepath = f"{base_path}/{random.choice(folder_names)}"
-            else:
-                filename = f"file{i+1}{random.choice(file_types)}"
-                if random.random() < 0.5:  # 50% chance of being in a subfolder
-                    filepath = f"{base_path}/{random.choice(folder_names)}/{filename}"
-                else:
-                    filepath = f"{base_path}/{filename}"
-
-            # Randomize the other values
-            active = random.random() < 0.8  # 80% chance of being active
-            ephemeral = random.random() < 0.3  # 30% chance of being ephemeral
-
-            # Generate usage counts
-            times_used = 0 if is_dir else random.randint(0, 20)
-            total_times_used = times_used
-            if times_used > 0 and random.random() < 0.7: # 70% chance of having more total uses than current uses
-                total_times_used += random.randint(1, 15)
-
-            # Add to result
-            result.append({
-                'filepath': filepath,
-                'is_directory': is_dir,
-                'active': active,
-                'ephemeral': ephemeral,
-                'times_used': times_used,
-                'total_times_used': total_times_used
-            })
-
-        return result
-
     def on_show_ephemeral_images(self, _event):
         self.populate_grid()
 
     def update_active_status(self, filepath: str, active: bool):
         with Db(self.parent.file_list) as db:
             db.set_active_flag(filepath, active)
+        # TODO Update hidden status on ephemeral images when a folder is set active/inactive
+        # Probably want to generalize, maybe putting refresh_ephemeral_images in a utils
 
     def on_clear_cache(self, event, filepath):
         print(f"[DB STUB] Clearing cache for: {filepath}")
