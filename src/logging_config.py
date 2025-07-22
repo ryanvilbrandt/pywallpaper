@@ -40,7 +40,7 @@ def init_logger():
         else:
             formatter = file_handler.formatter
         console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+        logging.getLogger().addHandler(console_handler)
 
     logger.info("Logger initialized")
     if file_handler is None:
