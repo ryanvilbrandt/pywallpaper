@@ -1,7 +1,3 @@
-from logging_config import init_logger
-
-init_logger()
-
 import ctypes
 import json
 import logging
@@ -24,6 +20,10 @@ from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError, ExifTags
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from wx import Event
+
+from logging_config import init_logger
+
+init_logger()
 
 import utils
 from db import Db
@@ -219,34 +219,34 @@ class PyWallpaper(wx.Frame):
 
         previous_image_keybind = wx.StaticText(p, label=self.settings.get("previous_image_keybind", "<not set>"))
         previous_image_keybind_set_button = wx.Button(p, label="Set")
-        previous_image_keybind_set_button.SetInitialSize((30, -1))
+        previous_image_keybind_set_button.SetInitialSize(wx.Size(30, -1))
         previous_image_keybind_set_button.Bind(
             wx.EVT_BUTTON, lambda event: self.set_keybind(previous_image_keybind, "previous")
         )
         previous_image_keybind_clear_button = wx.Button(p, label="Clear")
-        previous_image_keybind_clear_button.SetInitialSize((40, -1))
+        previous_image_keybind_clear_button.SetInitialSize(wx.Size(40, -1))
         previous_image_keybind_clear_button.Bind(
             wx.EVT_BUTTON, lambda event: self.clear_keybind(previous_image_keybind, "previous")
         )
         next_image_keybind = wx.StaticText(p, label=self.settings.get("next_image_keybind", "<not set>"))
         next_image_keybind_set_button = wx.Button(p, label="Set")
-        next_image_keybind_set_button.SetInitialSize((30, -1))
+        next_image_keybind_set_button.SetInitialSize(wx.Size(30, -1))
         next_image_keybind_set_button.Bind(
             wx.EVT_BUTTON, lambda event: self.set_keybind(next_image_keybind, "next")
         )
         next_image_keybind_clear_button = wx.Button(p, label="Clear")
-        next_image_keybind_clear_button.SetInitialSize((40, -1))
+        next_image_keybind_clear_button.SetInitialSize(wx.Size(40, -1))
         next_image_keybind_clear_button.Bind(
             wx.EVT_BUTTON, lambda event: self.clear_keybind(next_image_keybind, "next")
         )
         delete_image_keybind = wx.StaticText(p, label=self.settings.get("delete_image_keybind", "<not set>"))
         delete_image_keybind_set_button = wx.Button(p, label="Set")
-        delete_image_keybind_set_button.SetInitialSize((30, -1))
+        delete_image_keybind_set_button.SetInitialSize(wx.Size(30, -1))
         delete_image_keybind_set_button.Bind(
             wx.EVT_BUTTON, lambda event: self.set_keybind(delete_image_keybind, "delete")
         )
         delete_image_keybind_clear_button = wx.Button(p, label="Clear")
-        delete_image_keybind_clear_button.SetInitialSize((40, -1))
+        delete_image_keybind_clear_button.SetInitialSize(wx.Size(40, -1))
         delete_image_keybind_clear_button.Bind(
             wx.EVT_BUTTON, lambda event: self.clear_keybind(delete_image_keybind, "delete")
         )
@@ -855,7 +855,7 @@ class PyWallpaper(wx.Frame):
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_directory(dir_path, include_subfolders)
-            file_paths = self.get_file_list_in_folder(dir_path, include_subfolders)
+            file_paths = utils.get_file_list_in_folder(dir_path, include_subfolders)
             db.add_images(file_paths, ephemeral=True)
         self.add_observer_schedule(dir_path, include_subfolders=include_subfolders)
         if advance_image_after_load:
@@ -902,7 +902,7 @@ class PyWallpaper(wx.Frame):
             folder_data = db.add_eagle_folder(dir_path, folder_data)
             db.remove_ephemeral_images_in_folder(dir_path)
         folder_ids = list(folder_data.values())
-        file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_ids)
+        file_paths = utils.get_file_list_in_eagle_folder(dir_path, folder_ids)
         if file_paths:
             with Db(self.file_list) as db:
                 db.add_images(file_paths, ephemeral=True)
@@ -959,7 +959,7 @@ class PyWallpaper(wx.Frame):
 
     def remove_image_from_file_list(self, _icon, _item):
         with Db(self.file_list) as db:
-            db.set_active_flag(self.original_file_path)
+            db.set_active_flag(self.original_file_path, False)
         self.advance_image(_icon, _item)
 
     def delete_image(self, _icon=None, _item=None):
@@ -1042,7 +1042,7 @@ class MyEventHandler(FileSystemEventHandler):
         if self.eagle_mode:
             logger.debug(f"Adding '{file_path}' in Eagle mode. eagle_folder_ids={self.eagle_folder_ids}")
             base_dir = os.path.dirname(file_path)
-            file_path = self.parent.parse_eagle_folder(base_dir, self.eagle_folder_ids)
+            file_path = utils.parse_eagle_folder(base_dir, self.eagle_folder_ids)
             if file_path is None:
                 return
         with Db(file_list=self.parent.file_list) as db:

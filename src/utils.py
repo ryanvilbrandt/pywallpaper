@@ -1,6 +1,5 @@
 import json
 import logging
-import logging.config
 import os
 import shutil
 from configparser import ConfigParser
@@ -9,7 +8,6 @@ from time import perf_counter_ns
 from typing import Sequence, Optional
 
 import wx
-import yaml
 
 from db import Db
 
