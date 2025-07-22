@@ -516,6 +516,20 @@ class Db:
         if ret.rowcount == 0:
             logger.error(f"Failed to set image to inactive: {filepath}")
 
+    def set_include_subdirectories_flag(self, filepath: str, include_subdirectories: bool):
+        """
+        Set the include_subdirectories flag for a directory entry.
+        """
+        sql = f"""
+        UPDATE {self.table_id}
+        SET include_subdirectories=?
+        WHERE filepath=? AND is_directory=1;
+        """
+        filepath = filepath.replace("\\", "/")
+        ret = self._execute(sql, [include_subdirectories, filepath])
+        if ret.rowcount == 0:
+            logger.error(f"Failed to set include_subdirectories for: {filepath}")
+
     def delete_image(self, filepath: str):
         sql = f"""
         DELETE FROM {self.table_id} WHERE filepath=?;
@@ -541,3 +555,4 @@ class Db:
         ret = self._execute(sql, [json.dumps(color_cache), filepath])
         if ret.rowcount == 0:
             logger.error(f"Failed to set color cache for image: {filepath}")
+

@@ -258,16 +258,6 @@ class FileViewerFrame(wx.Frame):
     def on_show_ephemeral_images(self, _event):
         self.populate_grid()
 
-    def update_active_status(self, path: str, active: bool, is_directory: bool):
-        with Db(self.parent.file_list) as db:
-            db.set_active_flag(path, active)
-            if is_directory:
-                utils.refresh_ephemeral_images(db, path)
-
-    def on_clear_cache(self, event, filepath):
-        print(f"[DB STUB] Clearing cache for: {filepath}")
-        wx.MessageBox(f"Clearing cache for: {filepath}", "Clear Cache")
-
     def on_search_text(self, event):
         # Restart the timer every time text changes
         if self.search_timer.IsRunning():
@@ -331,14 +321,32 @@ class FileViewerFrame(wx.Frame):
     def on_grid_cell_dclick(self, event):
         row = event.GetRow()
         col = event.GetCol()
-        # "Active" column is index 1
         if col == 1 and row < self.grid.GetNumberRows():
+            # Active
             filepath = self.grid.GetCellValue(row, 0)
             active = self.grid.GetCellValue(row, 1) == "Yes"
             is_directory = self.grid.GetCellValue(row, 2) == "Yes"
             self.update_active_status(filepath, not active, is_directory)
             self.populate_grid()
+        elif col == 3 and row < self.grid.GetNumberRows():
+            # Include Subdirectories
+            is_directory = self.grid.GetCellValue(row, 2) == "Yes"
+            if is_directory:
+                filepath = self.grid.GetCellValue(row, 0)
+                include_subdirs = self.grid.GetCellValue(row, 3) == "Yes"
+                self.update_include_subdirs(filepath, not include_subdirs)
+                self.populate_grid()
         event.Skip()
+
+    def update_active_status(self, path: str, active: bool, is_directory: bool):
+        with Db(self.parent.file_list) as db:
+            db.set_active_flag(path, active)
+            if is_directory:
+                utils.refresh_ephemeral_images(db, path)
+
+    def update_include_subdirs(self, path: str, include_subdirs: bool):
+        with Db(self.parent.file_list) as db:
+            db.set_include_subdirectories_flag(path, include_subdirs)
 
     def on_grid_col_label_motion(self, event):
         # Show tooltip and change cursor only when hovering over the Active column header (index 1)
