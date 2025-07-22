@@ -227,6 +227,12 @@ class FileViewerFrame(wx.Frame):
         self.pagination_sizer.Layout()
 
     def fill_grid(self, data: Iterator[dict]):
+        # --- Save the currently selected cell, if any ---
+        selected_row = self.grid.GetGridCursorRow()
+        selected_col = self.grid.GetGridCursorCol()
+        if not self.grid.IsCellEditControlEnabled() and (selected_row < 0 or selected_col < 0):
+            selected_row, selected_col = None, None
+
         # --- Clear grid ---
         self.grid.BeginBatch()
         self.grid.ClearGrid()
@@ -254,6 +260,14 @@ class FileViewerFrame(wx.Frame):
         for i in range(1, self.num_columns):
             self.grid.AutoSizeColumn(i)
         self.grid.EndBatch()
+
+        # --- Restore the previously selected cell, if possible ---
+        if (
+            selected_row is not None and selected_col is not None
+            and selected_row < self.grid.GetNumberRows()
+            and selected_col < self.grid.GetNumberCols()
+        ):
+            self.grid.SetGridCursor(selected_row, selected_col)
 
     def on_show_ephemeral_images(self, _event):
         self.populate_grid()
@@ -347,6 +361,7 @@ class FileViewerFrame(wx.Frame):
     def update_include_subdirs(self, path: str, include_subdirs: bool):
         with Db(self.parent.file_list) as db:
             db.set_include_subdirectories_flag(path, include_subdirs)
+            utils.refresh_ephemeral_images(db, path)
 
     def on_grid_col_label_motion(self, event):
         """Show tooltip and change cursor when hovering over certain columns"""
@@ -359,7 +374,7 @@ class FileViewerFrame(wx.Frame):
                    "all ephemeral images in that folder will be disabled.")
             cursor = wx.Cursor(wx.CURSOR_QUESTION_ARROW)
         elif col == 3:  # Incl. Subdirs
-            msg = ("Double-click a cell in this column will toggle whether subfolders are\n"
+            msg = ("Double-clicking a cell in this column will toggle whether subfolders are\n"
                    "included when loading files inside that folder.")
             cursor = wx.Cursor(wx.CURSOR_QUESTION_ARROW)
         else:
