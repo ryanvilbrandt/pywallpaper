@@ -1,5 +1,10 @@
+from logging_config import init_logger
+
+init_logger()
+
 import ctypes
 import json
+import logging
 import os
 import re
 import shutil
@@ -27,7 +32,7 @@ from keybind_listener import KeybindListener, KeybindDialog
 from version import VERSION
 
 SPI_SET_DESKTOP_WALLPAPER = 0x14
-logger = utils.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PyWallpaper(wx.Frame):
