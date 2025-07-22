@@ -46,7 +46,7 @@ def get_logger(name: str) -> logging.Logger:
         os.makedirs(log_dir_name, exist_ok=True)
 
     # If in debug mode, or file_handler isn't set, also log to the console
-    if os.environ["DEBUG"] or file_handler is None:
+    if os.getenv("DEBUG") or file_handler is None:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
         # Use the same formatter as defined in the YAML

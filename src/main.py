@@ -344,7 +344,7 @@ class PyWallpaper(wx.Frame):
 
         self.SetMinSize(self.GetSize())
 
-        if os.environ["DEBUG"]:
+        if os.getenv("DEBUG"):
             self.Bind(wx.EVT_CLOSE, self.on_exit)
             self.Show()
         else:
