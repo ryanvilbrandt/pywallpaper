@@ -27,6 +27,7 @@ init_logger()
 
 import utils
 from db import Db
+from file_viewer import FileViewerFrame
 from image_utils import get_common_color, has_transparency
 from keybind_listener import KeybindListener, KeybindDialog
 from version import VERSION
@@ -184,13 +185,6 @@ class PyWallpaper(wx.Frame):
         self.delay_dropdown.SetValue(self.settings.get("delay_unit", "minutes"))
         self.delay_dropdown.Bind(wx.EVT_COMBOBOX, self.set_delay)
 
-        add_files_button = wx.Button(p, label="Add Files to Wallpaper List")
-        add_files_button.Bind(wx.EVT_BUTTON, self.add_files_to_list)
-        add_folder_button = wx.Button(p, label="Add Folder to Wallpaper List")
-        add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
-        add_eagle_folder_button = wx.Button(p, label="Add Eagle Folder to Wallpaper List")
-        add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
-
         self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
         self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
 
@@ -277,9 +271,12 @@ class PyWallpaper(wx.Frame):
         delay_sizer.Add(self.delay_dropdown)
         sizer.Add(delay_sizer, wx.SizerFlags().Border(wx.TOP, 10))
 
-        sizer.Add(add_files_button, wx.SizerFlags().Border(wx.TOP, 10))
-        sizer.Add(add_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
-        sizer.Add(add_eagle_folder_button, wx.SizerFlags().Border(wx.TOP, 5))
+        # --- Add File Viewer button above "Add filepath to images?" ---
+        open_file_viewer_btn = wx.Button(p, label="Open File Viewer")
+        open_file_viewer_btn.Bind(wx.EVT_BUTTON, self.open_file_viewer_window)
+        sizer.Add(open_file_viewer_btn, wx.SizerFlags().Border(wx.TOP, 10))
+        # --- End addition ---
+
         sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP, 10))
 
         sizer.Add(wx.StaticText(p, label=f'Wallpaper padding (in pixels):'), wx.SizerFlags().Border(wx.TOP, 20))
@@ -826,95 +823,6 @@ class PyWallpaper(wx.Frame):
         del self.settings[keybind_name + "_image_keybind"]
         self.save_settings()
 
-    def add_files_to_list(self, _event):
-        with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
-                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE) as fileDialog:
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return
-            file_paths = fileDialog.GetPaths()
-        # If we're adding images to the file list for the first time, pick a random image after load
-        with Db(self.file_list) as db:
-            advance_image_after_load = bool(not db.get_all_active_count())
-            db.add_images(file_paths)
-        if advance_image_after_load:
-            self.trigger_image_loop(None)
-
-    def add_folder_to_list(self, _event):
-        with wx.DirDialog(self, "Select Image Folder", style=wx.DD_DIR_MUST_EXIST) as dirDialog:
-            if dirDialog.ShowModal() == wx.ID_CANCEL:
-                return
-            dir_path = dirDialog.GetPath()
-        title, message = "Question", f"You selected the folder {dir_path}\nDo you want to include subfolders?"
-        with wx.MessageDialog(self, message, title, style=wx.ICON_QUESTION | wx.YES_NO | wx.CANCEL) as messageDialog:
-            answer = messageDialog.ShowModal()
-            if answer == wx.ID_CANCEL:
-                return
-            include_subfolders = answer == wx.ID_YES
-        dir_path = dir_path.replace("\\", "/")
-        with Db(self.file_list) as db:
-            # If we're adding images to the file list for the first time, pick a random image after load
-            advance_image_after_load = bool(not db.get_all_active_count())
-            db.add_directory(dir_path, include_subfolders)
-            file_paths = utils.get_file_list_in_folder(dir_path, include_subfolders)
-            db.add_images(file_paths, ephemeral=True)
-        self.add_observer_schedule(dir_path, include_subfolders=include_subfolders)
-        if advance_image_after_load:
-            self.trigger_image_loop(None)
-
-    def add_eagle_folder_to_list(self, _event):
-        with wx.DirDialog(self, "Select Eagle Library Folder", style=wx.DD_DIR_MUST_EXIST) as dirDialog:
-            if dirDialog.ShowModal() == wx.ID_CANCEL:
-                return
-            dir_path = dirDialog.GetPath()
-        if not os.path.isfile(os.path.join(dir_path, "metadata.json")) or \
-                not os.path.isdir(os.path.join(dir_path, "images")):
-            self.error_dialog(
-                "The selected folder is not a valid Eagle library folder. "
-                "It must contain a metadata.json file and an images folder."
-            )
-            return
-        # Get all images from metadata.json, falling recursively through child folders.
-        with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
-            metadata = json.load(f)
-        image_folders = {}
-
-        def add_to_image_folder_dict(folder_list: list[dict]):
-            for folder in folder_list:
-                image_folders[folder["name"]] = folder["id"]
-                if folder["children"]:
-                    add_to_image_folder_dict(folder["children"])
-
-        add_to_image_folder_dict(metadata["folders"])
-
-        # Prompt the user to pick a folder name
-        folder_names, folder_ids = zip(*image_folders.items())
-        with wx.MultiChoiceDialog(self, "Pick Folders to add to Wallpaper List", "Folders:",
-                                  choices=folder_names) as choice_dialog:
-            if choice_dialog.ShowModal() == wx.ID_CANCEL:
-                return
-        folder_data = {folder_names[i]: folder_ids[i] for i in choice_dialog.GetSelections()}
-        dir_path = dir_path.replace("\\", "/")
-
-        with Db(self.file_list) as db:
-            # If we're adding images to the file list for the first time, pick a random image after load
-            advance_image_after_load = bool(not db.get_all_active_count())
-            # Add folder data to existing folder data, and return the combined data
-            folder_data = db.add_eagle_folder(dir_path, folder_data)
-            db.remove_ephemeral_images_in_folder(dir_path)
-        folder_ids = list(folder_data.values())
-        file_paths = utils.get_file_list_in_eagle_folder(dir_path, folder_ids)
-        if file_paths:
-            with Db(self.file_list) as db:
-                db.add_images(file_paths, ephemeral=True)
-        self.add_observer_schedule(dir_path, eagle_folder_ids=folder_ids)
-        if file_paths and advance_image_after_load:
-            self.trigger_image_loop(None)
-
-    def error_dialog(self, message: str, title: str = None):
-        with wx.MessageDialog(self, message, "Error" if title is None else title,
-                              style=wx.OK | wx.ICON_ERROR) as dialog:
-            dialog.ShowModal()
-
     def refresh_ephemeral_images(self, force_refresh=False):
         # Do not run more than one refresh at once
         if self.running_ephemeral_image_refresh:
@@ -1007,6 +915,10 @@ class PyWallpaper(wx.Frame):
         if self.keybind_listener:
             self.keybind_listener.stop()
         wx.Exit()
+
+    def open_file_viewer_window(self, event):
+        frame = FileViewerFrame(self, "File Viewer")
+        frame.Show()
 
 
 class MyEventHandler(FileSystemEventHandler):

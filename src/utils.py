@@ -68,6 +68,12 @@ def log_perf(title: str = "Total:"):
     logger.info(f"{title} {(t2 - t1) / 1_000_000:.2f} ms")
 
 
+def error_dialog(parent: wx.Frame, message: str, title: str = None):
+    with wx.MessageDialog(parent, message, "Error" if title is None else title,
+                          style=wx.OK | wx.ICON_ERROR) as dialog:
+        dialog.ShowModal()
+
+
 def refresh_ephemeral_images(db: Db, folder_name: str = None):
     # TODO Add checking for more precise folder prefixes.
     #  Consider whether `include_subdirectories` is set, or if folders are inside other folders.

@@ -1,3 +1,5 @@
+import json
+import os
 from typing import Iterator
 
 import wx
@@ -5,18 +7,6 @@ import wx.grid as gridlib
 
 import utils
 from db import Db
-
-
-class FileViewerApp(wx.App):
-
-    def __init__(self, *args, **kwargs):
-        self.file_list = "Cute Girls"
-        super().__init__(*args, **kwargs)
-
-    def OnInit(self):
-        frame = FileViewerFrame(self, "File Viewer")
-        frame.Show()
-        return True
 
 
 class FileViewerFrame(wx.Frame):
@@ -41,13 +31,18 @@ class FileViewerFrame(wx.Frame):
         self.main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.add_files_btn = wx.Button(self.panel, label="Add Files")
-        self.add_folder_btn = wx.Button(self.panel, label="Add Folder")
+        add_files_button = wx.Button(self.panel, label="Add Files")
+        add_files_button.Bind(wx.EVT_BUTTON, self.add_files_to_list)
+        add_folder_button = wx.Button(self.panel, label="Add Folder")
+        add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
+        add_eagle_folder_button = wx.Button(self.panel, label="Add Eagle Folder")
+        add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
         self.show_ephemeral_cb = wx.CheckBox(self.panel, label="Show Ephemeral Files?")
         self.show_ephemeral_cb.SetValue(False)
         self.show_ephemeral_cb.Bind(wx.EVT_CHECKBOX, self.on_show_ephemeral_images)
-        controls_sizer.Add(self.add_files_btn, 0, wx.ALL, 5)
-        controls_sizer.Add(self.add_folder_btn, 0, wx.ALL, 5)
+        controls_sizer.Add(add_files_button, 0, wx.ALL, 5)
+        controls_sizer.Add(add_folder_button, 0, wx.ALL, 5)
+        controls_sizer.Add(add_eagle_folder_button, 0, wx.ALL, 5)
         controls_sizer.AddStretchSpacer(1)
         controls_sizer.Add(self.show_ephemeral_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
@@ -114,15 +109,15 @@ class FileViewerFrame(wx.Frame):
 
         self.center_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.first_btn = wx.Button(self.panel, label="◀◀", size=(48, -1))
-        self.prev_btn = wx.Button(self.panel, label="◀", size=(32, -1))
+        self.first_btn = wx.Button(self.panel, label="◀◀", size=wx.Size(48, -1))
+        self.prev_btn = wx.Button(self.panel, label="◀", size=wx.Size(32, -1))
         self.center_sizer.Add(self.first_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.center_sizer.Add(self.prev_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.first_btn.Bind(wx.EVT_BUTTON, self.on_first_page)
         self.prev_btn.Bind(wx.EVT_BUTTON, self.on_prev_page)
 
         self.center_sizer.Add(wx.StaticText(self.panel, label="Page:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        self.page_counter = wx.TextCtrl(self.panel, value="1", size=(40, -1), style=wx.TE_PROCESS_ENTER)
+        self.page_counter = wx.TextCtrl(self.panel, value="1", size=wx.Size(40, -1), style=wx.TE_PROCESS_ENTER)
         self.center_sizer.Add(self.page_counter, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 2)
         self.page_counter.Bind(wx.EVT_TEXT_ENTER, self.on_page_counter_enter)
         self.page_counter.Bind(wx.EVT_KILL_FOCUS, self.on_page_counter_enter)
@@ -131,8 +126,8 @@ class FileViewerFrame(wx.Frame):
         self.total_pages_label = wx.StaticText(self.panel, label="of 1")
         self.center_sizer.Add(self.total_pages_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 8)
 
-        self.next_btn = wx.Button(self.panel, label="▶", size=(32, -1))
-        self.last_btn = wx.Button(self.panel, label="▶▶", size=(48, -1))
+        self.next_btn = wx.Button(self.panel, label="▶", size=wx.Size(32, -1))
+        self.last_btn = wx.Button(self.panel, label="▶▶", size=wx.Size(48, -1))
         self.center_sizer.Add(self.next_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.center_sizer.Add(self.last_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.next_btn.Bind(wx.EVT_BUTTON, self.on_next_page)
@@ -161,6 +156,94 @@ class FileViewerFrame(wx.Frame):
         self.Centre()
         # --- END ---
 
+    def add_files_to_list(self, _event):
+        with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return
+            file_paths = fileDialog.GetPaths()
+        # If we're adding images to the file list for the first time, pick a random image after load
+        with Db(self.parent.file_list) as db:
+            advance_image_after_load = bool(not db.get_all_active_count())
+            db.add_images(file_paths)
+        if advance_image_after_load:
+            self.parent.trigger_image_loop(None)
+        self.populate_grid()
+
+    def add_folder_to_list(self, _event):
+        with wx.DirDialog(self, "Select Image Folder", style=wx.DD_DIR_MUST_EXIST) as dirDialog:
+            if dirDialog.ShowModal() == wx.ID_CANCEL:
+                return
+            dir_path = dirDialog.GetPath()
+        title, message = "Question", f"You selected the folder {dir_path}\nDo you want to include subfolders?"
+        with wx.MessageDialog(self, message, title, style=wx.ICON_QUESTION | wx.YES_NO | wx.CANCEL) as messageDialog:
+            answer = messageDialog.ShowModal()
+            if answer == wx.ID_CANCEL:
+                return
+            include_subfolders = answer == wx.ID_YES
+        dir_path = dir_path.replace("\\", "/")
+        with Db(self.parent.file_list) as db:
+            # If we're adding images to the file list for the first time, pick a random image after load
+            advance_image_after_load = bool(not db.get_all_active_count())
+            db.add_directory(dir_path, include_subfolders)
+            file_paths = utils.get_file_list_in_folder(dir_path, include_subfolders)
+            db.add_images(file_paths, ephemeral=True)
+        self.parent.add_observer_schedule(dir_path, include_subfolders=include_subfolders)
+        if advance_image_after_load:
+            self.parent.trigger_image_loop(None)
+        self.populate_grid()
+
+    def add_eagle_folder_to_list(self, _event):
+        with wx.DirDialog(self, "Select Eagle Library Folder", style=wx.DD_DIR_MUST_EXIST) as dirDialog:
+            if dirDialog.ShowModal() == wx.ID_CANCEL:
+                return
+            dir_path = dirDialog.GetPath()
+        if not os.path.isfile(os.path.join(dir_path, "metadata.json")) or \
+                not os.path.isdir(os.path.join(dir_path, "images")):
+            utils.error_dialog(
+                self,
+                "The selected folder is not a valid Eagle library folder. "
+                "It must contain a metadata.json file and an images folder."
+            )
+            return
+        # Get all images from metadata.json, falling recursively through child folders.
+        with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
+            metadata = json.load(f)
+        image_folders = {}
+
+        def add_to_image_folder_dict(folder_list: list[dict]):
+            for folder in folder_list:
+                image_folders[folder["name"]] = folder["id"]
+                if folder["children"]:
+                    add_to_image_folder_dict(folder["children"])
+
+        add_to_image_folder_dict(metadata["folders"])
+
+        # Prompt the user to pick a folder name
+        folder_names, folder_ids = zip(*image_folders.items())
+        with wx.MultiChoiceDialog(self, "Pick Folders to add to Wallpaper List", "Folders:",
+                                  choices=folder_names) as choice_dialog:
+            if choice_dialog.ShowModal() == wx.ID_CANCEL:
+                return
+        folder_data = {folder_names[i]: folder_ids[i] for i in choice_dialog.GetSelections()}
+        dir_path = dir_path.replace("\\", "/")
+
+        with Db(self.parent.file_list) as db:
+            # If we're adding images to the file list for the first time, pick a random image after load
+            advance_image_after_load = bool(not db.get_all_active_count())
+            # Add folder data to existing folder data, and return the combined data
+            folder_data = db.add_eagle_folder(dir_path, folder_data)
+            db.remove_ephemeral_images_in_folder(dir_path)
+        folder_ids = list(folder_data.values())
+        file_paths = utils.get_file_list_in_eagle_folder(dir_path, folder_ids)
+        if file_paths:
+            with Db(self.parent.file_list) as db:
+                db.add_images(file_paths, ephemeral=True)
+        self.parent.add_observer_schedule(dir_path, eagle_folder_ids=folder_ids)
+        if file_paths and advance_image_after_load:
+            self.parent.trigger_image_loop(None)
+        self.populate_grid()
+
     def on_col_header_click(self, event):
         # Only handle column header clicks, not row labels
         if event.GetRow() == -1 and event.GetCol() != -1:
@@ -179,11 +262,11 @@ class FileViewerFrame(wx.Frame):
         # --- Pagination logic ---
         try:
             page_size = int(self.page_size_choice.GetStringSelection())
-        except Exception:
+        except TypeError:
             page_size = 25
         try:
             page = int(self.page_counter.GetValue())
-        except Exception:
+        except TypeError:
             page = 1
         if page < 1:
             page = 1
@@ -389,8 +472,3 @@ class FileViewerFrame(wx.Frame):
         size = self.GetSize()
         print(f"Window resized: {size.GetWidth()}x{size.GetHeight()}")
         event.Skip()
-
-
-if __name__ == '__main__':
-    app = FileViewerApp()
-    app.MainLoop()
