@@ -14,6 +14,28 @@ logger = logging.getLogger(__name__)
 
 
 class FileViewerFrame(wx.Frame):
+    parent: "PyWallpaper"
+    current_page: int
+    total_pages: int
+    sort_column: str
+    sort_ascending: bool
+    grid: gridlib.Grid
+    headers: list
+    num_columns: int
+    show_ephemeral_cb: wx.CheckBox
+    search_ctrl: wx.SearchCtrl
+    search_timer: wx.Timer
+    page_size_choice: wx.Choice
+    page_size: int
+    first_btn: wx.Button
+    prev_btn: wx.Button
+    page_counter: wx.TextCtrl
+    total_pages_label: wx.StaticText
+    next_btn: wx.Button
+    last_btn: wx.Button
+    center_sizer: wx.BoxSizer
+    pagination_sizer: wx.BoxSizer
+
     def __init__(self, parent, title):
         self.parent = parent
 
@@ -21,6 +43,7 @@ class FileViewerFrame(wx.Frame):
         self.total_pages = 1
         self.sort_column = "Filepath"  # Default sort by filepath
         self.sort_ascending = True
+        self.page_size = 25
 
         super().__init__(None, title=title)
 
@@ -314,11 +337,11 @@ class FileViewerFrame(wx.Frame):
         # --- Pagination logic ---
         try:
             page_size = int(self.page_size_choice.GetStringSelection())
-        except TypeError:
+        except ValueError:
             page_size = 25
         try:
             page = int(self.page_counter.GetValue())
-        except TypeError:
+        except ValueError:
             page = 1
         if page < 1:
             page = 1
@@ -424,30 +447,30 @@ class FileViewerFrame(wx.Frame):
         self.populate_grid()
         event.Skip()
 
-    def on_pagination_change(self, event):
+    def on_pagination_change(self, _event):
         self.current_page = 1
         self.page_counter.ChangeValue("1")
         self.populate_grid()
 
-    def on_first_page(self, event):
+    def on_first_page(self, _event):
         if self.current_page != 1:
             self.current_page = 1
             self.page_counter.ChangeValue("1")
             self.populate_grid()
 
-    def on_prev_page(self, event):
+    def on_prev_page(self, _event):
         if self.current_page > 1:
             self.current_page -= 1
             self.page_counter.ChangeValue(str(self.current_page))
             self.populate_grid()
 
-    def on_next_page(self, event):
+    def on_next_page(self, _event):
         if self.current_page < self.total_pages:
             self.current_page += 1
             self.page_counter.ChangeValue(str(self.current_page))
             self.populate_grid()
 
-    def on_last_page(self, event):
+    def on_last_page(self, _event):
         if self.current_page != self.total_pages:
             self.current_page = self.total_pages
             self.page_counter.ChangeValue(str(self.current_page))
@@ -456,7 +479,7 @@ class FileViewerFrame(wx.Frame):
     def on_page_counter_enter(self, event):
         try:
             page = int(self.page_counter.GetValue())
-        except Exception:
+        except ValueError:
             page = 1
         if page < 1:
             page = 1

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import threading
 import time
+from configparser import ConfigParser
 from io import BytesIO
 from typing import Union, Optional, Any
 
@@ -37,29 +38,40 @@ logger = logging.getLogger(__name__)
 
 
 class PyWallpaper(wx.Frame):
-    config = None
-    settings = None
-    file_list = None
-    delay = None
-    error_delay = None
-    ephemeral_refresh_delay = None
-    font = None
-    temp_image_filename = None
+    config: ConfigParser
+    settings: dict
+    file_list: str
+    delay: int
+    error_delay: int
+    ephemeral_refresh_delay: int
+    font: ImageFont.FreeTypeFont
+    temp_image_filename: str
 
-    original_file_path = None
-    file_path_history = []
-    cycle_timer = None
-    observer, event_handlers = None, {}
-    processing_eagle = None
-    last_ephemeral_image_refresh = 0
+    original_file_path: str
+    file_path_history: list
+    cycle_timer: wx.Timer
+    observer: Observer
+    event_handlers: dict
+    processing_eagle: Any
+    last_ephemeral_image_refresh: float
 
     # GUI Elements
-    icon, file_list_dropdown, delay_value, delay_dropdown, add_filepath_checkbox = None, None, None, None, None
-    left_padding, right_padding, top_padding, bottom_padding, use_padding_test_checkbox = None, None, None, None, None
-    ephemeral_refresh_value, ephemeral_refresh_dropdown, enable_ephemeral_refresh_checkbox = None, None, None
-    running_ephemeral_image_refresh = False
+    icon: pystray.Icon
+    file_list_dropdown: wx.ComboBox
+    delay_value: wx.SpinCtrl
+    delay_dropdown: wx.ComboBox
+    add_filepath_checkbox: wx.CheckBox
+    left_padding: wx.SpinCtrl
+    right_padding: wx.SpinCtrl
+    top_padding: wx.SpinCtrl
+    bottom_padding: wx.SpinCtrl
+    use_padding_test_checkbox: wx.CheckBox
+    ephemeral_refresh_value: wx.SpinCtrl
+    ephemeral_refresh_dropdown: wx.ComboBox
+    enable_ephemeral_refresh_checkbox: wx.CheckBox
+    running_ephemeral_image_refresh: bool
 
-    keybind_listener: KeybindListener = None
+    keybind_listener: KeybindListener
 
     def __init__(self):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
@@ -70,6 +82,12 @@ class PyWallpaper(wx.Frame):
         self.perf.inc("load_config")
         self.load_gui()
         self.perf.inc("load_gui")
+
+        # Initialize important object attributes
+        self.file_path_history = []
+        self.event_handlers = {}
+        self.last_ephemeral_image_refresh = 0
+        self.running_ephemeral_image_refresh = False
 
         # Set delays from GUI elements
         self.set_delay(None)
@@ -127,15 +145,15 @@ class PyWallpaper(wx.Frame):
         seconds = 0.0
         try:
             seconds += int(m.group(2)) * 3600  # hours
-        except TypeError:
+        except ValueError:
             pass
         try:
             seconds += int(m.group(4)) * 60  # minutes
-        except TypeError:
+        except ValueError:
             pass
         try:
             seconds += int(m.group(6))  # seconds
-        except TypeError:
+        except ValueError:
             pass
         return seconds
 

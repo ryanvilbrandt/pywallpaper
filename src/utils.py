@@ -17,7 +17,7 @@ perf_list = []
 processing_eagle = False
 
 
-def load_config():
+def load_config() -> ConfigParser:
     global __config
     if not __config:
         __config = ConfigParser()
