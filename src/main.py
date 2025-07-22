@@ -84,6 +84,7 @@ class PyWallpaper(wx.Frame):
         self.perf.inc("load_gui")
 
         # Initialize important object attributes
+        self.original_file_path = ""
         self.file_path_history = []
         self.event_handlers = {}
         self.last_ephemeral_image_refresh = 0
@@ -145,15 +146,15 @@ class PyWallpaper(wx.Frame):
         seconds = 0.0
         try:
             seconds += int(m.group(2)) * 3600  # hours
-        except ValueError:
+        except (TypeError, ValueError):
             pass
         try:
             seconds += int(m.group(4)) * 60  # minutes
-        except ValueError:
+        except (TypeError, ValueError):
             pass
         try:
             seconds += int(m.group(6))  # seconds
-        except ValueError:
+        except (TypeError, ValueError):
             pass
         return seconds
 

@@ -431,7 +431,7 @@ class Db:
         params = []
         if folder_name:
             sql += "  AND filepath = ?"
-            params.append(folder_name)
+            params.append(folder_name.replace("\\", "/"))
         return self._fetch_all(sql, params)
 
     def get_folder_info(self, dir_path: str) -> Optional[dict]:
@@ -440,6 +440,7 @@ class Db:
         FROM {self.table_id}
         WHERE active=1 AND is_directory=1 AND filepath=?;
         """
+        dir_path = dir_path.replace("\\", "/")
         return self._fetch_one(sql, [dir_path])
 
     def add_images(self, filepaths: Sequence[str], ephemeral: bool = False):
@@ -448,6 +449,7 @@ class Db:
         VALUES (?, ?)
         ON CONFLICT(filepath) DO UPDATE SET hidden=FALSE;
         """
+        filepaths = [f.replace("\\", "/") for f in filepaths]
         self.cur.executemany(sql, [(f, ephemeral) for f in filepaths])
 
     def add_directory(self, dir_path: str, include_subdirectories: bool = True):
@@ -456,6 +458,7 @@ class Db:
         VALUES (?, ?, ?)
         ON CONFLICT (filepath) DO NOTHING;
         """
+        dir_path = dir_path.replace("\\", "/")
         self.cur.execute(sql, [dir_path, True, include_subdirectories])
 
     def add_eagle_folder(self, eagle_library_path: str, eagle_folder_data: dict[str, str]) -> dict[str, str]:
@@ -464,6 +467,7 @@ class Db:
         FROM {self.table_id}
         WHERE filepath = ?;
         """
+        eagle_library_path = eagle_library_path.replace("\\", "/")
         data = self._scalar(sql, [eagle_library_path])
         if data is None:
             sql = f"""
@@ -490,6 +494,7 @@ class Db:
         SET hidden=TRUE
         WHERE filepath IN ({','.join(['?'] * len(filepaths))});
         """
+        filepaths = [f.replace("\\", "/") for f in filepaths]
         self.cur.execute(sql, list(filepaths))
 
     def remove_ephemeral_images(self):
