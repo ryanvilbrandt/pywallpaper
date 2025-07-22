@@ -8,10 +8,8 @@ import subprocess
 import threading
 import time
 from argparse import ArgumentParser
-from glob import glob
 from io import BytesIO
-from json import JSONDecodeError
-from typing import Sequence, Union, Optional, Any
+from typing import Union, Optional, Any
 
 import pystray
 import win32api
@@ -61,7 +59,7 @@ class PyWallpaper(wx.Frame):
     keybind_listener: KeybindListener = None
 
     def __init__(self, debug: bool = False):
-        self.init_logger(debug)
+        utils.init_logger(debug)
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.perf = utils.PerformanceTimer()
         self.migrate_db()
@@ -74,45 +72,6 @@ class PyWallpaper(wx.Frame):
         # Set delays from GUI elements
         self.set_delay(None)
         self.set_ephemeral_refresh_delay(None)
-
-    @staticmethod
-    def init_logger(debug: bool = False):
-        # Load logging config file
-        with open("conf/logging.yaml", "r") as f:
-            raw = f.read()
-
-        # Expand out env vars and apply config
-        expanded = os.path.expandvars(raw).replace("\\", "/")
-        config = yaml.safe_load(expanded)
-        logging.config.dictConfig(config)
-
-        # Find the file_handler so we can use it later
-        file_handler = None
-        for handler in logging.getLogger().handlers:
-            if isinstance(handler, logging.FileHandler):
-                file_handler = handler
-                break
-
-        # Make the logging directory if needed
-        if file_handler:
-            log_dir_name = os.path.dirname(file_handler.baseFilename)
-            os.makedirs(log_dir_name, exist_ok=True)
-
-        # If in debug mode, or file_handler isn't set, also log to the console
-        if debug or file_handler is None:
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.DEBUG)
-            # Use the same formatter as defined in the YAML
-            if file_handler is None:
-                formatter = logging.Formatter("[%(asctime)s] %(levelname)s in %(name)s: %(message)s")
-            else:
-                formatter = file_handler.formatter
-            console_handler.setFormatter(formatter)
-            logger.addHandler(console_handler)
-
-        logger.info("Logger initialized")
-        if file_handler is None:
-            logger.warning("No file handler is configured. Logging to the console.")
 
     @staticmethod
     def migrate_db():
@@ -947,7 +906,7 @@ class PyWallpaper(wx.Frame):
                               style=wx.OK | wx.ICON_ERROR) as dialog:
             dialog.ShowModal()
 
-    def refresh_ephemeral_images(self, force_refresh=False):
+    def refresh_ephemeral_images(self, folder_list: list[str] = None, force_refresh=False):
         # Do not run more than one refresh at once
         if self.running_ephemeral_image_refresh:
             return
@@ -959,102 +918,10 @@ class PyWallpaper(wx.Frame):
                 return
         try:
             self.running_ephemeral_image_refresh = True
-            with Db(self.file_list) as db:
-                folders = list(db.get_active_folders())
-                new_file_paths = []
-                for folder in folders:
-                    logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
-                    if folder["is_eagle_directory"]:
-                        new_file_paths += self.get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
-                    else:
-                        new_file_paths += self.get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
-                new_file_paths = set(new_file_paths)
-                ephemeral_images = db.get_all_ephemeral_images()
-                existing_file_paths = set([f["filepath"] for f in ephemeral_images])
-                file_paths_to_add = new_file_paths.difference(existing_file_paths)
-                if file_paths_to_add:
-                    db.add_images(file_paths_to_add, ephemeral=True)
-                file_paths_to_hide = existing_file_paths.difference(new_file_paths)
-                if file_paths_to_hide:
-                    db.hide_images(file_paths_to_hide)
+            utils.refresh_ephemeral_images(self.file_list, folder_list)
         finally:
             self.running_ephemeral_image_refresh = False
             self.last_ephemeral_image_refresh = time.time()
-
-    def get_file_list_in_folder(self, dir_path: str, include_subfolders: bool) -> Sequence[str]:
-        file_paths = []
-        allowed_extensions = ["." + f.strip(" ").strip(".")
-                              for f in self.config.get("Advanced", "Image types").lower().split(",")]
-        for dir_path, dir_names, filenames in os.walk(dir_path):
-            # If we don't want to include subfolders, clearing the `dir_names` list will stop os.walk() at the
-            # top-level directory.
-            if not include_subfolders:
-                dir_names.clear()
-            for filename in filenames:
-                if filename == "Thumbs.db":
-                    continue
-                ext = os.path.splitext(filename)[1].lower()
-                if ext in allowed_extensions:
-                    file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
-        return file_paths
-
-    def get_file_list_in_eagle_folder(self, dir_path: str, folder_ids: list[str]) -> Sequence[str]:
-        self.processing_eagle = True
-        progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...",
-                                         style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
-        try:
-            file_list = []
-            folder_list = glob(os.path.join(dir_path, "images/*"))
-            total_folders = len(folder_list)
-            progress_bar.SetRange(total_folders)
-            progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
-            for i, folder_path in enumerate(folder_list, start=1):
-                # if i % 100 == 0:
-                #     print(f"Scanning Eagle folders: {i}/{total_folders}")
-                file_path = self.parse_eagle_folder(folder_path, folder_ids, ignore_lock=True)
-                if file_path is not None:
-                    file_list.append(file_path)
-                pb_status = progress_bar.Update(i, newmsg=f"Scanning image folders... ({i}/{total_folders})")
-                # If the user clicked Abort, return early
-                if not pb_status[0]:
-                    return []
-            return file_list
-        finally:
-            progress_bar.Close()
-            self.processing_eagle = False
-
-    def parse_eagle_folder(self, dir_path: str, folder_ids: list[str], ignore_lock: bool = False) -> Optional[str]:
-        if self.processing_eagle and not ignore_lock:
-            return None
-        file_list = glob(os.path.join(dir_path, "*.*"))
-        if os.path.join(dir_path, "metadata.json") not in file_list:
-            logger.warning(f"No metadata.json file found in {dir_path}")
-            logger.warning(file_list)
-            return None
-        try:
-            with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
-                metadata = json.load(f)
-        except JSONDecodeError:
-            logger.exception(f"Error when decoding {os.path.join(dir_path, 'metadata.json')}")
-            return None
-        # Skip if it's not a folder_id we care about
-        try:
-            if not set(folder_ids).intersection(metadata["folders"]):
-                return None
-        except TypeError:
-            logger.exception("TypeError when intersecting folder sets")
-            logger.error(folder_ids)
-            logger.error(metadata["folders"])
-            raise
-        logger.debug(f"Loading image from {dir_path}...")
-        for file_path in file_list:
-            if file_path.endswith("metadata.json"):
-                continue
-            if len(file_list) > 2 and file_path.endswith("_thumbnail.png"):
-                continue
-            return file_path.replace("\\", "/")
-        logger.error(f"No non-thumbnail image found in {dir_path}")
-        return None
 
     def advance_image(self, _icon, _item):
         self.trigger_image_loop(None)
