@@ -334,10 +334,13 @@ class Db:
         """
         return self._scalar(sql)
 
-    def get_all_ephemeral_images(self) -> Iterator[dict]:
+    def get_all_ephemeral_images(self, folder_name: str) -> Iterator[dict]:
         sql = f"""
-        SELECT * FROM {self.table_id} WHERE ephemeral=1 AND is_directory=0 AND hidden=0;
+        SELECT * FROM {self.table_id}
+        WHERE ephemeral=1 AND is_directory=0 AND hidden=0
         """
+        if folder_name:
+            sql += f"AND filepath LIKE '{folder_name}%'"
         return self._fetch_all(sql)
 
     def get_random_image(self, increment: bool = True) -> str:
@@ -417,12 +420,19 @@ class Db:
         """
         self.cur.execute(sql)
 
-    def get_active_folders(self) -> Iterator[dict]:
+    def get_active_folders(self, folder_name: str = None) -> Iterator[dict]:
         sql = f"""
         SELECT filepath, include_subdirectories, is_eagle_directory, eagle_folder_data 
-        FROM {self.table_id} WHERE active=1 AND is_directory=1 AND hidden=0;
+        FROM {self.table_id} 
+        WHERE active=1
+          AND is_directory=1
+          AND hidden=0
         """
-        return self._fetch_all(sql)
+        params = []
+        if folder_name:
+            sql += "  AND filepath = ?"
+            params.append(folder_name)
+        return self._fetch_all(sql, params)
 
     def get_folder_info(self, dir_path: str) -> Optional[dict]:
         sql = f"""

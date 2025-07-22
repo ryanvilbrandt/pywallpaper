@@ -3,6 +3,7 @@ from typing import Iterator
 import wx
 import wx.grid as gridlib
 
+import utils
 from db import Db
 
 
@@ -257,9 +258,11 @@ class FileViewerFrame(wx.Frame):
     def on_show_ephemeral_images(self, _event):
         self.populate_grid()
 
-    def update_active_status(self, filepath: str, active: bool):
+    def update_active_status(self, path: str, active: bool, is_directory: bool):
         with Db(self.parent.file_list) as db:
-            db.set_active_flag(filepath, active)
+            db.set_active_flag(path, active)
+            if is_directory:
+                utils.refresh_ephemeral_images(db, path)
 
     def on_clear_cache(self, event, filepath):
         print(f"[DB STUB] Clearing cache for: {filepath}")
@@ -330,13 +333,11 @@ class FileViewerFrame(wx.Frame):
         col = event.GetCol()
         # "Active" column is index 1
         if col == 1 and row < self.grid.GetNumberRows():
-            current_value = self.grid.GetCellValue(row, col)
-            new_value = "No" if current_value == "Yes" else "Yes"
-            self.grid.SetCellValue(row, col, new_value)
-            # Optionally update the database or backend here
-            # You may want to get the filepath from column 0
             filepath = self.grid.GetCellValue(row, 0)
-            self.update_active_status(filepath, new_value == "Yes")
+            active = self.grid.GetCellValue(row, 1) == "Yes"
+            is_directory = self.grid.GetCellValue(row, 2) == "Yes"
+            self.update_active_status(filepath, not active, is_directory)
+            self.populate_grid()
         event.Skip()
 
     def on_grid_col_label_motion(self, event):

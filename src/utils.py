@@ -1,5 +1,6 @@
 import json
 import logging
+import logging.config
 import os
 import shutil
 from configparser import ConfigParser
@@ -116,25 +117,26 @@ def log_perf(title: str = "Total:"):
     logger.info(f"{title} {(t2 - t1) / 1_000_000:.2f} ms")
 
 
-def refresh_ephemeral_images(file_list: str, folder_list: list[str] = None):
-    with Db(file_list) as db:
-        folders = list(db.get_active_folders()) if folder_list is None else folder_list
-        new_file_paths = []
-        for folder in folders:
-            logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
-            if folder["is_eagle_directory"]:
-                new_file_paths += get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
-            else:
-                new_file_paths += get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
-        new_file_paths = set(new_file_paths)
-        ephemeral_images = db.get_all_ephemeral_images()
-        existing_file_paths = set([f["filepath"] for f in ephemeral_images])
-        file_paths_to_add = new_file_paths.difference(existing_file_paths)
-        if file_paths_to_add:
-            db.add_images(file_paths_to_add, ephemeral=True)
-        file_paths_to_hide = existing_file_paths.difference(new_file_paths)
-        if file_paths_to_hide:
-            db.hide_images(file_paths_to_hide)
+def refresh_ephemeral_images(db: Db, folder_name: str = None):
+    # TODO Add checking for more precise folder prefixes.
+    #  Consider whether `include_subdirectories` is set, or if folders are inside other folders.
+    folders = list(db.get_active_folders(folder_name))
+    new_file_paths = []
+    for folder in folders:
+        logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
+        if folder["is_eagle_directory"]:
+            new_file_paths += get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
+        else:
+            new_file_paths += get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
+    new_file_paths = set(new_file_paths)
+    ephemeral_images = db.get_all_ephemeral_images(folder_name)
+    existing_file_paths = set([f["filepath"] for f in ephemeral_images])
+    file_paths_to_add = new_file_paths.difference(existing_file_paths)
+    if file_paths_to_add:
+        db.add_images(file_paths_to_add, ephemeral=True)
+    file_paths_to_hide = existing_file_paths.difference(new_file_paths)
+    if file_paths_to_hide:
+        db.hide_images(file_paths_to_hide)
 
 
 def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence[str]:

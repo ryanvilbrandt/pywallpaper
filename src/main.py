@@ -1,13 +1,11 @@
 import ctypes
 import json
-import logging.config
 import os
 import re
 import shutil
 import subprocess
 import threading
 import time
-from argparse import ArgumentParser
 from io import BytesIO
 from typing import Union, Optional, Any
 
@@ -904,7 +902,7 @@ class PyWallpaper(wx.Frame):
                               style=wx.OK | wx.ICON_ERROR) as dialog:
             dialog.ShowModal()
 
-    def refresh_ephemeral_images(self, folder_list: list[str] = None, force_refresh=False):
+    def refresh_ephemeral_images(self, force_refresh=False):
         # Do not run more than one refresh at once
         if self.running_ephemeral_image_refresh:
             return
@@ -916,7 +914,8 @@ class PyWallpaper(wx.Frame):
                 return
         try:
             self.running_ephemeral_image_refresh = True
-            utils.refresh_ephemeral_images(self.file_list, folder_list)
+            with Db(self.file_list) as db:
+                utils.refresh_ephemeral_images(db)
         finally:
             self.running_ephemeral_image_refresh = False
             self.last_ephemeral_image_refresh = time.time()
