@@ -32,9 +32,9 @@ class Db:
 
     def __enter__(self):
         self.connect()
-        if self.file_list is not None:
+        if self.file_list and not self.table_id:
             self.table_id = self.get_table_id(self.file_list)
-            if self.table_id is None:
+            if not self.table_id:
                 self.make_images_table()
         return self
 

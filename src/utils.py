@@ -116,8 +116,8 @@ def log_perf(title: str = "Total:"):
     logger.info(f"{title} {(t2 - t1) / 1_000_000:.2f} ms")
 
 
-def refresh_ephemeral_images(file_list: str, folder_list: list[str] = None):
-    with Db(file_list) as db:
+def refresh_ephemeral_images(db_obj: Db, folder_list: list[str] = None):
+    with db_obj as db:
         folders = list(db.get_active_folders()) if folder_list is None else folder_list
         new_file_paths = []
         for folder in folders:

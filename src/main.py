@@ -33,6 +33,7 @@ logger = utils.get_logger(__name__)
 
 
 class PyWallpaper(wx.Frame):
+    db = None
     config = None
     settings = None
     file_list = None
@@ -60,10 +61,10 @@ class PyWallpaper(wx.Frame):
     def __init__(self):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.perf = utils.PerformanceTimer()
-        self.migrate_db()
-        self.perf.inc("migrate_db")
         self.load_config()
         self.perf.inc("load_config")
+        self.load_db()
+        self.perf.inc("load_db")
         self.load_gui()
         self.perf.inc("load_gui")
 
@@ -71,10 +72,11 @@ class PyWallpaper(wx.Frame):
         self.set_delay(None)
         self.set_ephemeral_refresh_delay(None)
 
-    @staticmethod
-    def migrate_db():
+    def load_db(self):
         with Db() as db:
             db.migrate()
+        file_list = self.settings.get("selected_file_list", "Default")
+        self.db = Db(file_list)
 
     def load_config(self):
         c = utils.load_config()
@@ -156,12 +158,12 @@ class PyWallpaper(wx.Frame):
         # Create GUI
         p = wx.Panel(self)
 
-        with Db() as db:
+        with self.db as db:
             image_tables = db.get_image_tables()
         if not image_tables:
             # No image tables in the DB. Set the file list to "Default"
             image_tables = ["Default"]
-            self.file_list = "Default"
+            self.db = Db("Default")
         image_tables.append("<Add new file list>")
         self.file_list_dropdown = wx.ComboBox(p, choices=image_tables, style=wx.CB_READONLY)
         self.file_list_dropdown.Bind(wx.EVT_COMBOBOX, self.select_file_list)
@@ -405,7 +407,7 @@ class PyWallpaper(wx.Frame):
     def trigger_image_loop(self, _event: Event = None, redo_colors: bool = False):
         self.cycle_timer.Stop()
 
-        with Db(self.file_list) as db:
+        with self.db as db:
             count = db.get_all_active_count()
         if not count:
             self.Show()
@@ -436,7 +438,7 @@ class PyWallpaper(wx.Frame):
                 self.file_path_history.append(self.original_file_path)
                 self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
                 logger.debug(f"History: {self.file_path_history}")
-            with Db(self.file_list) as db:
+            with self.db as db:
                 t1 = time.perf_counter_ns()
                 algorithm = self.config.get("Settings", "Random algorithm").lower()
                 if algorithm == "pure":
@@ -606,7 +608,7 @@ class PyWallpaper(wx.Frame):
             if common_colors is None:
                 set_cache = False
                 if self.settings.get("use_common_color_cache", True) and not redo_cache:
-                    with Db(self.file_list) as db:
+                    with self.db as db:
                         logger.info("Using cached common colors")
                         common_colors = db.get_common_color_cache(image_file_path)
                         set_cache = True
@@ -623,7 +625,7 @@ class PyWallpaper(wx.Frame):
                             f"(I probably need to fix the get_color_by_mode function)"
                         )
                 if set_cache or redo_cache:
-                    with Db(self.file_list) as db:
+                    with self.db as db:
                         db.set_common_color_cache(image_file_path, common_colors)
 
             return get_common_color(common_colors, config_value)
@@ -682,7 +684,7 @@ class PyWallpaper(wx.Frame):
             logger.warning("Couldn't access image directory. Not deleting image.")
             return
         logger.warning("Deleting image from DB...")
-        with Db(self.file_list) as db:
+        with self.db as db:
             db.delete_image(file_path)
 
     def show_previous_image(self, _event=None):
@@ -701,7 +703,7 @@ class PyWallpaper(wx.Frame):
 
     def run_watchdog(self):
         self.observer = Observer()
-        with Db(self.file_list) as db:
+        with self.db as db:
             folders = db.get_active_folders()
             for folder in folders:
                 eagle_folder_ids = None
@@ -743,17 +745,19 @@ class PyWallpaper(wx.Frame):
             if dlg.ShowModal() == wx.ID_CANCEL:
                 self.file_list_dropdown.SetValue(self.settings.get("selected_file_list", "Default"))
                 return
-            self.file_list = dlg.GetValue()
-            with Db(self.file_list) as db:
+            file_list = dlg.GetValue()
+            with self.db as db:
                 image_tables = db.get_image_tables()
                 self.file_list_dropdown.Set(image_tables + ["<Add new file list>"])
-                self.file_list_dropdown.SetValue(self.file_list)
+                self.file_list_dropdown.SetValue(file_list)
         else:
-            self.file_list = selected_file_list
+            file_list = selected_file_list
+
+        self.db = Db(file_list)
         if _event:
             # Only advance image if it was in response to a GUI event
             self.advance_image(None, None)
-        self.save_setting("selected_file_list", self.file_list)
+        self.save_setting("selected_file_list", file_list)
 
     def set_delay(self, _event):
         value = self.delay_value.GetValue()
@@ -822,7 +826,7 @@ class PyWallpaper(wx.Frame):
                 return
             file_paths = fileDialog.GetPaths()
         # If we're adding images to the file list for the first time, pick a random image after load
-        with Db(self.file_list) as db:
+        with self.db as db:
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_images(file_paths)
         if advance_image_after_load:
@@ -840,7 +844,7 @@ class PyWallpaper(wx.Frame):
                 return
             include_subfolders = answer == wx.ID_YES
         dir_path = dir_path.replace("\\", "/")
-        with Db(self.file_list) as db:
+        with self.db as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
             db.add_directory(dir_path, include_subfolders)
@@ -884,16 +888,16 @@ class PyWallpaper(wx.Frame):
         folder_data = {folder_names[i]: folder_ids[i] for i in choice_dialog.GetSelections()}
         dir_path = dir_path.replace("\\", "/")
 
-        with Db(self.file_list) as db:
+        with self.db as db:
             # If we're adding images to the file list for the first time, pick a random image after load
             advance_image_after_load = bool(not db.get_all_active_count())
             # Add folder data to existing folder data, and return the combined data
             folder_data = db.add_eagle_folder(dir_path, folder_data)
             db.remove_ephemeral_images_in_folder(dir_path)
         folder_ids = list(folder_data.values())
-        file_paths = self.get_file_list_in_eagle_folder(dir_path, folder_ids)
+        file_paths = utils.get_file_list_in_eagle_folder(dir_path, folder_ids)
         if file_paths:
-            with Db(self.file_list) as db:
+            with self.db as db:
                 db.add_images(file_paths, ephemeral=True)
         self.add_observer_schedule(dir_path, eagle_folder_ids=folder_ids)
         if file_paths and advance_image_after_load:
@@ -916,7 +920,7 @@ class PyWallpaper(wx.Frame):
                 return
         try:
             self.running_ephemeral_image_refresh = True
-            utils.refresh_ephemeral_images(self.file_list, folder_list)
+            utils.refresh_ephemeral_images(self.db, folder_list)
         finally:
             self.running_ephemeral_image_refresh = False
             self.last_ephemeral_image_refresh = time.time()
@@ -946,8 +950,8 @@ class PyWallpaper(wx.Frame):
         subprocess.Popen(["explorer", "/select,", os.path.abspath(self.original_file_path)])
 
     def remove_image_from_file_list(self, _icon, _item):
-        with Db(self.file_list) as db:
-            db.set_active_flag(self.original_file_path)
+        with self.db as db:
+            db.set_active_flag(self.original_file_path, False)
         self.advance_image(_icon, _item)
 
     def delete_image(self, _icon=None, _item=None):
@@ -961,7 +965,7 @@ class PyWallpaper(wx.Frame):
         backup_path = self.config.get("Advanced", "Deleted image path") + ext
         logger.info(f"Moving {path} to {backup_path}")
         shutil.move(path, backup_path)
-        with Db(self.file_list) as db:
+        with self.db as db:
             db.delete_image(path)
         notification = f"{os.path.basename(path)} has been deleted."
         if len(notification) > 64:
@@ -1033,7 +1037,7 @@ class MyEventHandler(FileSystemEventHandler):
             file_path = self.parent.parse_eagle_folder(base_dir, self.eagle_folder_ids)
             if file_path is None:
                 return
-        with Db(file_list=self.parent.file_list) as db:
+        with self.parent.db as db:
             db.add_images([file_path], ephemeral=True)
 
     def on_deleted(self, event):
@@ -1041,7 +1045,7 @@ class MyEventHandler(FileSystemEventHandler):
             return
         logger.debug(f"File deleted: {event.src_path}")
         file_path = event.src_path.replace("\\", "/")
-        with Db(file_list=self.parent.file_list) as db:
+        with self.parent.db as db:
             db.delete_image(file_path)
 
 

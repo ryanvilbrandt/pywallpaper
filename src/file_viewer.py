@@ -260,8 +260,6 @@ class FileViewerFrame(wx.Frame):
     def update_active_status(self, filepath: str, active: bool):
         with Db(self.parent.file_list) as db:
             db.set_active_flag(filepath, active)
-        # TODO Update hidden status on ephemeral images when a folder is set active/inactive
-        # Probably want to generalize, maybe putting refresh_ephemeral_images in a utils
 
     def on_clear_cache(self, event, filepath):
         print(f"[DB STUB] Clearing cache for: {filepath}")
