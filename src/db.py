@@ -534,7 +534,6 @@ class Db:
         sql = f"""
         DELETE FROM {self.table_id} WHERE filepath=?;
         """
-        filepath = filepath.replace("\\", "/")
         ret = self._execute(sql, [filepath])
         if ret.rowcount == 0:
             logger.error(f"Failed to delete image from database: {filepath}")

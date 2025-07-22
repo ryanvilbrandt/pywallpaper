@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import Iterator
 
@@ -7,6 +8,9 @@ import wx.grid as gridlib
 
 import utils
 from db import Db
+from utils import refresh_ephemeral_images
+
+logger = logging.getLogger(__name__)
 
 
 class FileViewerFrame(wx.Frame):
@@ -37,12 +41,15 @@ class FileViewerFrame(wx.Frame):
         add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
         add_eagle_folder_button = wx.Button(self.panel, label="Add Eagle Folder")
         add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
+        delete_selected_button = wx.Button(self.panel, label="Delete Selected")
+        delete_selected_button.Bind(wx.EVT_BUTTON, self.on_delete_selected)
         self.show_ephemeral_cb = wx.CheckBox(self.panel, label="Show Ephemeral Files?")
         self.show_ephemeral_cb.SetValue(False)
         self.show_ephemeral_cb.Bind(wx.EVT_CHECKBOX, self.on_show_ephemeral_images)
         controls_sizer.Add(add_files_button, 0, wx.ALL, 5)
         controls_sizer.Add(add_folder_button, 0, wx.ALL, 5)
         controls_sizer.Add(add_eagle_folder_button, 0, wx.ALL, 5)
+        controls_sizer.Add(delete_selected_button, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         controls_sizer.AddStretchSpacer(1)
         controls_sizer.Add(self.show_ephemeral_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
@@ -57,7 +64,6 @@ class FileViewerFrame(wx.Frame):
         self.Bind(wx.EVT_TIMER, self.on_search_timer, self.search_timer)
         self.search_ctrl.Bind(wx.EVT_TEXT, self.on_search_text)
         self.search_ctrl.Bind(wx.EVT_TEXT_ENTER, self.on_search_enter)
-        # --- End search bar addition ---
 
         self.main_sizer.Add(controls_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
 
@@ -242,6 +248,55 @@ class FileViewerFrame(wx.Frame):
         self.parent.add_observer_schedule(dir_path, eagle_folder_ids=folder_ids)
         if file_paths and advance_image_after_load:
             self.parent.trigger_image_loop(None)
+        self.populate_grid()
+
+    def on_delete_selected(self, _event):
+        # Get selected rows
+        selected_rows = set()
+        # logger.debug(self.grid.GetSelectedCells())
+        # logger.debug(self.grid.GetSelectedRows())
+        # logger.debug(self.grid.GetSelectedCols())
+        # logger.debug(self.grid.GetSelectedBlocks())
+        # logger.debug(self.grid.GetSelectedRowBlocks())
+        # logger.debug(self.grid.GetSelectedColBlocks())
+        for cell in self.grid.GetSelectedCells():
+            selected_rows.add(cell[0])
+        for row in self.grid.GetSelectedRows():
+            selected_rows.add(row)
+        for row in self.grid.GetSelectedRowBlocks():
+            selected_rows.add(row)
+        for block in self.grid.GetSelectedBlocks():
+            for row in range(block.TopRow, block.BottomRow + 1):
+                selected_rows.add(row)
+        # If no cells are selected, use the cursor row if valid
+        if not selected_rows:
+            row = self.grid.GetGridCursorRow()
+            if 0 <= row < self.grid.GetNumberRows():
+                selected_rows.add(row)
+        # Confirm deletion
+        if not selected_rows:
+            wx.MessageBox("No rows selected.", "Delete Selected", wx.OK | wx.ICON_INFORMATION)
+            return
+        msg = f"Are you sure you want to delete {len(selected_rows)} selected file(s) from the database?"
+        if wx.MessageBox(msg, "Delete Selected", wx.YES_NO | wx.ICON_WARNING) != wx.YES:
+            return
+        # Delete from DB
+        filepaths = []
+        folders = []
+        for row in selected_rows:
+            filepath = self.grid.GetCellValue(row, 0)
+            filepaths.append(filepath)
+            if self.grid.GetCellValue(row, 2) == "Yes":  # is_directory
+                folders.append(filepath)
+
+        with Db(self.parent.file_list) as db:
+            if filepaths:
+                for filepath in filepaths:
+                    logger.debug(f"Deleting {filepath}...")
+                    db.delete_image(filepath)
+            if folders:
+                for folder in folders:
+                    refresh_ephemeral_images(db, folder)
         self.populate_grid()
 
     def on_col_header_click(self, event):
