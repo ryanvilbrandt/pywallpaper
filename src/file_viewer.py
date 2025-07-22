@@ -31,19 +31,19 @@ class FileViewerFrame(wx.Frame):
     def init_gui(self):
         self.SetMinSize(wx.Size(600, 400))
 
-        self.panel = wx.Panel(self)
-        self.main_sizer = wx.BoxSizer(wx.VERTICAL)
+        p = wx.Panel(self)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        add_files_button = wx.Button(self.panel, label="Add Files")
+        add_files_button = wx.Button(p, label="Add Files")
         add_files_button.Bind(wx.EVT_BUTTON, self.add_files_to_list)
-        add_folder_button = wx.Button(self.panel, label="Add Folder")
+        add_folder_button = wx.Button(p, label="Add Folder")
         add_folder_button.Bind(wx.EVT_BUTTON, self.add_folder_to_list)
-        add_eagle_folder_button = wx.Button(self.panel, label="Add Eagle Folder")
+        add_eagle_folder_button = wx.Button(p, label="Add Eagle Folder")
         add_eagle_folder_button.Bind(wx.EVT_BUTTON, self.add_eagle_folder_to_list)
-        delete_selected_button = wx.Button(self.panel, label="Delete Selected")
+        delete_selected_button = wx.Button(p, label="Delete Selected")
         delete_selected_button.Bind(wx.EVT_BUTTON, self.on_delete_selected)
-        self.show_ephemeral_cb = wx.CheckBox(self.panel, label="Show Ephemeral Files?")
+        self.show_ephemeral_cb = wx.CheckBox(p, label="Show Ephemeral Files?")
         self.show_ephemeral_cb.SetValue(False)
         self.show_ephemeral_cb.Bind(wx.EVT_CHECKBOX, self.on_show_ephemeral_images)
         controls_sizer.Add(add_files_button, 0, wx.ALL, 5)
@@ -54,7 +54,7 @@ class FileViewerFrame(wx.Frame):
         controls_sizer.Add(self.show_ephemeral_cb, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # --- Add search bar to the right of the checkbox ---
-        self.search_ctrl = wx.SearchCtrl(self.panel, style=wx.TE_PROCESS_ENTER)
+        self.search_ctrl = wx.SearchCtrl(p, style=wx.TE_PROCESS_ENTER)
         self.search_ctrl.ShowSearchButton(True)
         self.search_ctrl.ShowCancelButton(True)
         controls_sizer.Add(self.search_ctrl, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
@@ -65,7 +65,7 @@ class FileViewerFrame(wx.Frame):
         self.search_ctrl.Bind(wx.EVT_TEXT, self.on_search_text)
         self.search_ctrl.Bind(wx.EVT_TEXT_ENTER, self.on_search_enter)
 
-        self.main_sizer.Add(controls_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
+        main_sizer.Add(controls_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
 
         # --- Replace grid_sizer/grid_panel with wx.Grid ---
         self.headers = [
@@ -73,9 +73,9 @@ class FileViewerFrame(wx.Frame):
         ]
         self.num_columns = len(self.headers)
 
-        self.grid_panel = wx.ScrolledWindow(self.panel)
-        self.grid_panel.SetScrollRate(20, 20)
-        self.grid = gridlib.Grid(self.grid_panel)
+        grid_panel = wx.ScrolledWindow(p)
+        grid_panel.SetScrollRate(20, 20)
+        self.grid = gridlib.Grid(grid_panel)
         self.grid.CreateGrid(0, self.num_columns)
         for i, header in enumerate(self.headers):
             self.grid.SetColLabelValue(i, header)
@@ -94,18 +94,18 @@ class FileViewerFrame(wx.Frame):
 
         grid_sizer = wx.BoxSizer(wx.VERTICAL)
         grid_sizer.Add(self.grid, 1, wx.EXPAND)
-        self.grid_panel.SetSizer(grid_sizer)
-        self.main_sizer.Add(self.grid_panel, 1, wx.EXPAND | wx.ALL, 5)
+        grid_panel.SetSizer(grid_sizer)
+        main_sizer.Add(grid_panel, 1, wx.EXPAND | wx.ALL, 5)
 
-        self.panel.SetSizer(self.main_sizer)
+        p.SetSizer(main_sizer)
 
         # --- Pagination controls below the grid ---
         self.pagination_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # Page size dropdown (left-aligned)
-        self.pagination_sizer.Add(wx.StaticText(self.panel, label="Page size:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        self.page_size_choices = ["25", "50", "100", "200", "500", "1000"]
-        self.page_size_choice = wx.Choice(self.panel, choices=self.page_size_choices)
+        self.pagination_sizer.Add(wx.StaticText(p, label="Page size:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        page_size_choices = ["25", "50", "100", "200", "500", "1000"]
+        self.page_size_choice = wx.Choice(p, choices=page_size_choices)
         self.page_size_choice.SetSelection(0)  # Default to 25
         self.pagination_sizer.Add(self.page_size_choice, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 5)
         self.page_size_choice.Bind(wx.EVT_CHOICE, self.on_pagination_change)
@@ -115,25 +115,24 @@ class FileViewerFrame(wx.Frame):
 
         self.center_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.first_btn = wx.Button(self.panel, label="◀◀", size=wx.Size(48, -1))
-        self.prev_btn = wx.Button(self.panel, label="◀", size=wx.Size(32, -1))
+        self.first_btn = wx.Button(p, label="◀◀", size=wx.Size(48, -1))
+        self.prev_btn = wx.Button(p, label="◀", size=wx.Size(32, -1))
         self.center_sizer.Add(self.first_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.center_sizer.Add(self.prev_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.first_btn.Bind(wx.EVT_BUTTON, self.on_first_page)
         self.prev_btn.Bind(wx.EVT_BUTTON, self.on_prev_page)
 
-        self.center_sizer.Add(wx.StaticText(self.panel, label="Page:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        self.page_counter = wx.TextCtrl(self.panel, value="1", size=wx.Size(40, -1), style=wx.TE_PROCESS_ENTER)
+        self.center_sizer.Add(wx.StaticText(p, label="Page:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.page_counter = wx.TextCtrl(p, value="1", size=wx.Size(40, -1), style=wx.TE_PROCESS_ENTER)
         self.center_sizer.Add(self.page_counter, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 2)
         self.page_counter.Bind(wx.EVT_TEXT_ENTER, self.on_page_counter_enter)
         self.page_counter.Bind(wx.EVT_KILL_FOCUS, self.on_page_counter_enter)
 
-        # Move "of #" label next to the page counter
-        self.total_pages_label = wx.StaticText(self.panel, label="of 1")
+        self.total_pages_label = wx.StaticText(p, label="of 1")
         self.center_sizer.Add(self.total_pages_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 8)
 
-        self.next_btn = wx.Button(self.panel, label="▶", size=wx.Size(32, -1))
-        self.last_btn = wx.Button(self.panel, label="▶▶", size=wx.Size(48, -1))
+        self.next_btn = wx.Button(p, label="▶", size=wx.Size(32, -1))
+        self.last_btn = wx.Button(p, label="▶▶", size=wx.Size(48, -1))
         self.center_sizer.Add(self.next_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.center_sizer.Add(self.last_btn, 0, wx.LEFT | wx.RIGHT, 2)
         self.next_btn.Bind(wx.EVT_BUTTON, self.on_next_page)
@@ -142,15 +141,14 @@ class FileViewerFrame(wx.Frame):
         self.pagination_sizer.Add(self.center_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
         self.pagination_sizer.AddStretchSpacer(1)
 
-        self.main_sizer.Add(self.pagination_sizer, 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 8)
-        # --- End pagination controls ---
+        main_sizer.Add(self.pagination_sizer, 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 8)
 
         self.populate_grid()
 
         # --- Ensure the window grows to fit the grid on first load ---
-        self.panel.Layout()
+        p.Layout()
         self.Layout()
-        self.grid_panel.FitInside()
+        grid_panel.FitInside()
         # Use the grid's best size to set the frame size if it's larger than the current size
         best_grid_size = self.grid.GetBestSize()
         grid_width, grid_height = best_grid_size.GetWidth(), best_grid_size.GetHeight()
@@ -160,7 +158,6 @@ class FileViewerFrame(wx.Frame):
         target_height = grid_height + extra_height
         self.SetSize(wx.Size(target_width, target_height))
         self.Centre()
-        # --- END ---
 
     def add_files_to_list(self, _event):
         with wx.FileDialog(self, "Select Images", wildcard="Image Files|*.gif;*.jpg;*.jpeg;*.png|All Files|*.*",
