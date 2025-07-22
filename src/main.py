@@ -17,7 +17,6 @@ import win32clipboard
 import win32evtlog
 import win32evtlogutil
 import wx
-import yaml
 from PIL import Image, ImageFont, ImageDraw, UnidentifiedImageError, ExifTags
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -30,7 +29,7 @@ from keybind_listener import KeybindListener, KeybindDialog
 from version import VERSION
 
 SPI_SET_DESKTOP_WALLPAPER = 0x14
-logger = logging.getLogger(__name__)
+logger = utils.get_logger(__name__)
 
 
 class PyWallpaper(wx.Frame):
@@ -58,15 +57,14 @@ class PyWallpaper(wx.Frame):
 
     keybind_listener: KeybindListener = None
 
-    def __init__(self, debug: bool = False):
-        utils.init_logger(debug)
+    def __init__(self):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
         self.perf = utils.PerformanceTimer()
         self.migrate_db()
         self.perf.inc("migrate_db")
         self.load_config()
         self.perf.inc("load_config")
-        self.load_gui(debug)
+        self.load_gui()
         self.perf.inc("load_gui")
 
         # Set delays from GUI elements
@@ -137,7 +135,7 @@ class PyWallpaper(wx.Frame):
             pass
         return seconds
 
-    def load_gui(self, debug: bool):
+    def load_gui(self):
         # Create a system tray icon
         image = Image.open(self.config.get("Advanced", "Icon path"))
         menu = (
@@ -346,7 +344,7 @@ class PyWallpaper(wx.Frame):
 
         self.SetMinSize(self.GetSize())
 
-        if debug:
+        if os.environ["DEBUG"]:
             self.Bind(wx.EVT_CLOSE, self.on_exit)
             self.Show()
         else:
@@ -1047,17 +1045,10 @@ class MyEventHandler(FileSystemEventHandler):
             db.delete_image(file_path)
 
 
-def parse_args():
-    parser = ArgumentParser("PyWallpaper")
-    parser.add_argument("-d", "--debug", action="store_true")
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    args = parse_args()
     app = wx.App()
     try:
-        PyWallpaper(debug=args.debug).post_init()
+        PyWallpaper().post_init()
         app.MainLoop()
     except Exception:
         logger.exception("Pywallpaper halted with an error:")

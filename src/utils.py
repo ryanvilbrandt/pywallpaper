@@ -12,24 +12,29 @@ import yaml
 
 from db import Db
 
-logger = logging.getLogger(__name__)
+logging_config_set = False
 __config = None
 perf_list = []
 processing_eagle = False
 
 
-def init_logger(debug: bool = False):
-    # Load logging config file
-    with open("conf/logging.yaml", "r") as f:
-        raw = f.read()
+def get_logger(name: str) -> logging.Logger:
+    global logging_config_set
 
-    # Expand out env vars and apply config
-    expanded = os.path.expandvars(raw).replace("\\", "/")
-    config = yaml.safe_load(expanded)
-    logging.config.dictConfig(config)
+    if not logging_config_set:
+        # Load logging config file
+        with open("conf/logging.yaml", "r") as f:
+            raw = f.read()
+
+        # Expand out env vars and apply config
+        expanded = os.path.expandvars(raw).replace("\\", "/")
+        config = yaml.safe_load(expanded)
+        logging.config.dictConfig(config)
+        logging_config_set = True
 
     # Find the file_handler so we can use it later
     file_handler = None
+    logger = logging.getLogger(name)
     for handler in logging.getLogger().handlers:
         if isinstance(handler, logging.FileHandler):
             file_handler = handler
@@ -41,7 +46,7 @@ def init_logger(debug: bool = False):
         os.makedirs(log_dir_name, exist_ok=True)
 
     # If in debug mode, or file_handler isn't set, also log to the console
-    if debug or file_handler is None:
+    if os.environ["DEBUG"] or file_handler is None:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
         # Use the same formatter as defined in the YAML
@@ -55,8 +60,9 @@ def init_logger(debug: bool = False):
     logger.info("Logger initialized")
     if file_handler is None:
         logger.warning("No file handler is configured. Logging to the console.")
+    return logger
 
-init_logger()
+logger = get_logger(__name__)
 
 
 def load_config():
