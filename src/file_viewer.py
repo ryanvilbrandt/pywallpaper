@@ -349,12 +349,18 @@ class FileViewerFrame(wx.Frame):
             db.set_include_subdirectories_flag(path, include_subdirs)
 
     def on_grid_col_label_motion(self, event):
-        # Show tooltip and change cursor only when hovering over the Active column header (index 1)
+        """Show tooltip and change cursor when hovering over certain columns"""
         label_window = self.grid.GetGridColLabelWindow()
         x, y = event.GetPosition()
         col = self.grid.XToCol(x)
         if col == 1:  # Active
-            msg = "Double-click an Active cell to toggle its state"
+            msg = ("Double-clicking a cell in this column will toggle whether that file\n"
+                   "is included in the list of files to pick from. If you disable a folder,\n"
+                   "all ephemeral images in that folder will be disabled.")
+            cursor = wx.Cursor(wx.CURSOR_QUESTION_ARROW)
+        elif col == 3:  # Incl. Subdirs
+            msg = ("Double-click a cell in this column will toggle whether subfolders are\n"
+                   "included when loading files inside that folder.")
             cursor = wx.Cursor(wx.CURSOR_QUESTION_ARROW)
         else:
             msg = ""
