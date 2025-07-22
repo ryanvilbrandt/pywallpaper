@@ -511,7 +511,11 @@ class PyWallpaper(wx.Frame):
 
     @staticmethod
     def reorient_picture(img: Image) -> Image:
-        exif = img._getexif()
+        try:
+            exif = img._getexif()
+        except AttributeError:
+            logger.error("No exif data on image.")
+            return img
         logger.debug(exif)
         if exif is None:
             return img
