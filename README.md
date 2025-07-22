@@ -32,6 +32,16 @@ The `Random algorithm` config setting defines how the wallpaper images are picke
 * **Weighted**: Picks a random image weighted based on how often the images have previously been picked. The more often an image has been used, the less likely it is to be picked.
 * **Least used**: Picks a random image from all the least used images.
 
+## Debug Mode
+
+You can start PyWallpaper in debug mode if you set the environment variable `PYWALLPAPER_DEBUG_MODE` to any value.
+
+Debug mode features:
+
+* Show PyWallpaper window on launch.
+* X will close PyWallpaper, not minimize it.
+* Logs will be written directly to the console.
+
 # Troubleshooting
 
 ## Program doesn't start when I run `run.bat`
