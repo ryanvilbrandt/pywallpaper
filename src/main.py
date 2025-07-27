@@ -430,10 +430,6 @@ class PyWallpaper(wx.Frame):
                 self.set_wallpaper(test_wallpaper, redo_colors)
                 self.original_file_path = test_wallpaper
                 return
-            if self.original_file_path:
-                self.file_path_history.append(self.original_file_path)
-                self.file_path_history = self.file_path_history[-1 * self.config.getint("Settings", "History size"):]
-                logger.debug(f"History: {self.file_path_history}")
             with Db(self.file_list) as db:
                 t1 = time.perf_counter_ns()
                 algorithm = self.config.get("Settings", "Random algorithm").lower()
@@ -448,7 +444,11 @@ class PyWallpaper(wx.Frame):
                 t2 = time.perf_counter_ns()
                 logger.info(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
             self.original_file_path = self.original_file_path.replace("/", "\\")
-            self.set_wallpaper(self.original_file_path, redo_colors)
+            if self.set_wallpaper(self.original_file_path, redo_colors):
+                self.file_path_history.append(self.original_file_path)
+                self.file_path_history = self.file_path_history[
+                                         -1 * self.config.getint("Settings", "History size"):]
+                logger.debug(f"History: {self.file_path_history}")
 
             wx.CallAfter(self.refresh_ephemeral_images)
         except Exception:
@@ -458,9 +458,10 @@ class PyWallpaper(wx.Frame):
     def is_screensaver_running(self) -> bool:
         return False
 
-    def set_wallpaper(self, file_path: str, redo_colors: bool = False):
+    def set_wallpaper(self, file_path: str, redo_colors: bool = False) -> bool:
         logger.info(f"Loading {file_path}")
         delay = self.error_delay
+        success = False
         try:
             t1 = time.perf_counter_ns()
             file_path = self.make_image(file_path, redo_colors)
@@ -478,7 +479,10 @@ class PyWallpaper(wx.Frame):
             t2a = time.perf_counter_ns()
             logger.info(f"Time to apply image to desktop: {(t2a - t1a) / 1_000_000:.2f} ms")
             delay = self.delay
+            success = True
+
         wx.CallAfter(self.cycle_timer.StartOnce, delay)
+        return success
 
     def make_image(self, file_path: str, redo_colors: bool = False) -> str:
         # Open image
