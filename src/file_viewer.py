@@ -232,6 +232,7 @@ class FileViewerFrame(wx.Frame):
                 "It must contain a metadata.json file and an images folder."
             )
             return
+
         # Get all images from metadata.json, falling recursively through child folders.
         with open(os.path.join(dir_path, "metadata.json"), "rb") as f:
             metadata = json.load(f)
@@ -300,6 +301,11 @@ class FileViewerFrame(wx.Frame):
         msg = f"Are you sure you want to delete {len(selected_rows)} selected file(s) from the database?"
         if wx.MessageBox(msg, "Delete Selected", wx.YES_NO | wx.ICON_WARNING) != wx.YES:
             return
+
+        # Set busy cursor
+        self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
+        wx.Yield()
+
         # Delete from DB
         filepaths = []
         folders = []
@@ -334,6 +340,9 @@ class FileViewerFrame(wx.Frame):
         event.Skip()
 
     def populate_grid(self):
+        # Set busy cursor
+        self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
+        wx.Yield()
         # --- Pagination logic ---
         try:
             page_size = int(self.page_size_choice.GetStringSelection())
@@ -383,6 +392,8 @@ class FileViewerFrame(wx.Frame):
         # Relayout the page counter sizers to ensure proper layout after changes
         self.center_sizer.Layout()
         self.pagination_sizer.Layout()
+
+        self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
 
     def fill_grid(self, data: Iterator[dict]):
         # --- Save the currently selected cell, if any ---
@@ -514,12 +525,20 @@ class FileViewerFrame(wx.Frame):
         with Db(self.parent.file_list) as db:
             db.set_active_flag(path, active)
             if is_directory:
+                # Set busy cursor
+                self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
+                wx.Yield()
                 utils.refresh_ephemeral_images(db, path)
+                self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
 
     def update_include_subdirs(self, path: str, include_subdirs: bool):
+        # Set busy cursor
+        self.SetCursor(wx.Cursor(wx.CURSOR_WAIT))
+        wx.Yield()
         with Db(self.parent.file_list) as db:
             db.set_include_subdirectories_flag(path, include_subdirs)
             utils.refresh_ephemeral_images(db, path)
+        self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
 
     def on_grid_col_label_motion(self, event):
         """Show tooltip and change cursor when hovering over certain columns"""

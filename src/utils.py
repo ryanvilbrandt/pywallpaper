@@ -77,6 +77,8 @@ def error_dialog(parent: wx.Frame, message: str, title: str = None):
 def refresh_ephemeral_images(db: Db, folder_name: str = None):
     # TODO Add checking for more precise folder prefixes.
     #  Consider whether `include_subdirectories` is set, or if folders are inside other folders.
+    if folder_name and not os.path.isdir(folder_name):
+        logger.warning("Couldn't access folder, skipping refreshing ephemeral images")
     folders = list(db.get_active_folders(folder_name))
     new_file_paths = []
     for folder in folders:
@@ -91,9 +93,12 @@ def refresh_ephemeral_images(db: Db, folder_name: str = None):
     file_paths_to_add = new_file_paths.difference(existing_file_paths)
     if file_paths_to_add:
         db.add_images(file_paths_to_add, ephemeral=True)
-    file_paths_to_hide = existing_file_paths.difference(new_file_paths)
-    if file_paths_to_hide:
-        db.hide_images(file_paths_to_hide)
+    if existing_file_paths:
+        file_paths_to_hide = existing_file_paths.difference(new_file_paths)
+        if file_paths_to_hide:
+            db.hide_images(file_paths_to_hide)
+    else:
+        logger.warning("Existing file paths is empty. Possibly due to issue connecting to storage. Not hiding any images.")
 
 
 def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence[str]:
