@@ -65,6 +65,7 @@ class PyWallpaper(wx.Frame):
     right_padding: wx.SpinCtrl
     top_padding: wx.SpinCtrl
     bottom_padding: wx.SpinCtrl
+    padding_presets_radio: wx.RadioBox
     use_padding_test_checkbox: wx.CheckBox
     ephemeral_refresh_value: wx.SpinCtrl
     ephemeral_refresh_dropdown: wx.ComboBox
@@ -75,13 +76,6 @@ class PyWallpaper(wx.Frame):
 
     def __init__(self):
         super().__init__(None, title=f"pyWallpaper v{VERSION}")
-        self.perf = utils.PerformanceTimer()
-        self.migrate_db()
-        self.perf.inc("migrate_db")
-        self.load_config()
-        self.perf.inc("load_config")
-        self.load_gui()
-        self.perf.inc("load_gui")
 
         # Initialize important object attributes
         self.original_file_path = ""
@@ -89,6 +83,14 @@ class PyWallpaper(wx.Frame):
         self.event_handlers = {}
         self.last_ephemeral_image_refresh = 0
         self.running_ephemeral_image_refresh = False
+
+        self.perf = utils.PerformanceTimer()
+        self.migrate_db()
+        self.perf.inc("migrate_db")
+        self.load_config()
+        self.perf.inc("load_config")
+        self.load_gui()
+        self.perf.inc("load_gui")
 
         # Set delays from GUI elements
         self.set_delay(None)
@@ -207,24 +209,34 @@ class PyWallpaper(wx.Frame):
         self.add_filepath_checkbox = wx.CheckBox(p, label="Add Filepath to Images?")
         self.add_filepath_checkbox.SetValue(self.config.getboolean("Filepath", "Add Filepath to Images"))
 
-        self.left_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("left_padding", 0))
-        self.right_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("right_padding", 0))
-        self.top_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("top_padding", 0))
-        self.bottom_padding = wx.SpinCtrl(p, min=0, max=10000, initial=self.settings.get("bottom_padding", 0))
+        self.left_padding = wx.SpinCtrl(p, min=0, max=10000)
+        self.right_padding = wx.SpinCtrl(p, min=0, max=10000)
+        self.top_padding = wx.SpinCtrl(p, min=0, max=10000)
+        self.bottom_padding = wx.SpinCtrl(p, min=0, max=10000)
+
+        preset_labels = ["Preset 1", "Preset 2", "Preset 3"]
+        self.padding_presets_radio = wx.RadioBox(
+            p, label="Padding Presets", choices=preset_labels, majorDimension=1, style=wx.RA_SPECIFY_COLS
+        )
+        self.padding_presets_radio.SetSelection(self.settings.get("selected_padding_preset", 0))
+        self.padding_presets_radio.Bind(wx.EVT_RADIOBOX, self.load_padding_preset)
+        self.load_padding_preset(None)
+
         apply_padding_button = wx.Button(p, label="Apply Padding Changes")
         apply_padding_button.Bind(wx.EVT_BUTTON, self.apply_padding)
         self.use_padding_test_checkbox = wx.CheckBox(p, label="Show test wallpaper when applying padding changes?")
         self.use_padding_test_checkbox.SetValue(False)
 
+        eph_delay_settings = self.settings.get("ephemeral_refresh_delay", {})
         self.ephemeral_refresh_value = wx.SpinCtrl(
-            p, min=0, max=10000, initial=self.settings.get("ephemeral_refresh_delay_value", 10)
+            p, min=0, max=10000, initial=eph_delay_settings.get("value", 10)
         )
         self.ephemeral_refresh_value.Bind(wx.EVT_SPINCTRL, self.set_ephemeral_refresh_delay)
         self.ephemeral_refresh_value.Bind(wx.EVT_TEXT, self.set_ephemeral_refresh_delay)
         self.ephemeral_refresh_dropdown = wx.ComboBox(
             p, choices=["seconds", "minutes", "hours"], style=wx.CB_READONLY
         )
-        self.ephemeral_refresh_dropdown.SetValue(self.settings.get("ephemeral_refresh_delay_unit", "minutes"))
+        self.ephemeral_refresh_dropdown.SetValue(eph_delay_settings.get("unit", "minutes"))
         self.ephemeral_refresh_dropdown.Bind(wx.EVT_COMBOBOX, self.set_ephemeral_refresh_delay)
         self.enable_ephemeral_refresh_checkbox = wx.CheckBox(p, label="Enable periodic rescan of folders?")
         self.enable_ephemeral_refresh_checkbox.SetValue(self.settings.get("enable_ephemeral_refresh", True))
@@ -298,7 +310,9 @@ class PyWallpaper(wx.Frame):
 
         sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP, 10))
 
-        sizer.Add(wx.StaticText(p, label=f'Wallpaper padding (in pixels):'), wx.SizerFlags().Border(wx.TOP, 20))
+        padding_box = wx.StaticBox(p, label="Wallpaper padding (in pixels):")
+        padding_sizer = wx.StaticBoxSizer(padding_box, wx.VERTICAL)
+
         border_sizer = wx.GridSizer(cols=3)
         border_sizer.AddMany([
             (wx.StaticText(p), wx.SizerFlags()),
@@ -310,9 +324,16 @@ class PyWallpaper(wx.Frame):
             (wx.StaticText(p), wx.SizerFlags()),
             (self.bottom_padding, wx.SizerFlags()),
         ])
-        sizer.Add(border_sizer, wx.SizerFlags().Border(wx.TOP, 5))
-        sizer.Add(apply_padding_button, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
-        sizer.Add(self.use_padding_test_checkbox, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
+        # Layout: border_sizer left, radio buttons right
+        padding_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        padding_row_sizer.Add(border_sizer, wx.SizerFlags().Expand())
+        padding_row_sizer.Add(self.padding_presets_radio, wx.SizerFlags().Border(wx.LEFT, 10).Align(wx.ALIGN_CENTER_VERTICAL))
+
+        padding_sizer.Add(padding_row_sizer, wx.SizerFlags().Border(wx.TOP, 5))
+        padding_sizer.Add(apply_padding_button, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
+        padding_sizer.Add(self.use_padding_test_checkbox, wx.SizerFlags().Border(wx.TOP | wx.BOTTOM, 5))
+
+        sizer.Add(padding_sizer, wx.SizerFlags().Border(wx.TOP, 20))
 
         ephemeral_refresh_sizer = wx.BoxSizer(wx.HORIZONTAL)
         ephemeral_refresh_sizer.Add(
@@ -574,10 +595,10 @@ class PyWallpaper(wx.Frame):
         )
 
         bg = Image.new("RGB", (monitor_width, monitor_height), bg_color)
-        left_padding = self.settings.get("left_padding", 0)
-        right_padding = self.settings.get("right_padding", 0)
-        top_padding = self.settings.get("top_padding", 0)
-        bottom_padding = self.settings.get("bottom_padding", 0)
+        left_padding = self.left_padding.GetValue()
+        right_padding = self.right_padding.GetValue()
+        top_padding = self.top_padding.GetValue()
+        bottom_padding = self.bottom_padding.GetValue()
 
         if img:
             # Determine aspect ratios
@@ -610,7 +631,7 @@ class PyWallpaper(wx.Frame):
             # Paste image on BG
             bg.paste(img, (paste_x, paste_y), img if has_transparency(img) else None)
 
-        # Add padding after image, to cover up border
+        # Add padding after image to cover up the border
         if padding_color:
             if left_padding:
                 bg.paste(Image.new("RGB", (left_padding, bg.height), padding_color), (0, 0))
@@ -804,16 +825,17 @@ class PyWallpaper(wx.Frame):
         self.ephemeral_refresh_delay = value * units[unit]  # seconds
         logger.debug(self.ephemeral_refresh_delay)
         if _event:
-            self.settings["ephemeral_refresh_delay_value"] = value
-            self.settings["ephemeral_refresh_delay_unit"] = unit
-            self.save_settings()
+            self.save_setting("ephemeral_refresh_delay", {"value": value, "unit": unit})
 
     def apply_padding(self, _event):
-        self.settings["left_padding"] = self.left_padding.GetValue()
-        self.settings["right_padding"] = self.right_padding.GetValue()
-        self.settings["top_padding"] = self.top_padding.GetValue()
-        self.settings["bottom_padding"] = self.bottom_padding.GetValue()
-        self.save_settings()
+        idx = self.padding_presets_radio.GetSelection()
+        d = {
+            "left": self.left_padding.GetValue(),
+            "right": self.right_padding.GetValue(),
+            "top": self.top_padding.GetValue(),
+            "bottom": self.bottom_padding.GetValue(),
+        }
+        self.save_setting(f"padding_preset_{idx}", d)
         if self.use_padding_test_checkbox.GetValue():
             img = self.resize_image_to_bg(None, "red", "", "white")
             # Write to temp file
@@ -822,6 +844,17 @@ class PyWallpaper(wx.Frame):
             self.set_desktop_wallpaper(temp_file_path)
         else:
             self.set_wallpaper(self.original_file_path)
+
+    def load_padding_preset(self, _event):
+        idx = self.padding_presets_radio.GetSelection()
+        preset = self.settings.get(f"padding_preset_{idx}", {})
+        self.left_padding.SetValue(preset.get("left", 0))
+        self.right_padding.SetValue(preset.get("right", 0))
+        self.top_padding.SetValue(preset.get("top", 0))
+        self.bottom_padding.SetValue(preset.get("bottom", 0))
+        if self.original_file_path:
+            self.set_wallpaper(self.original_file_path)
+        self.save_setting("selected_padding_preset", idx)
 
     def set_keybind(self, label: wx.StaticText, keybind_name: str):
         # self.keybind_listener.stop()
