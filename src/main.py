@@ -46,12 +46,11 @@ class PyWallpaper(wx.Frame):
     ephemeral_refresh_delay: int
     font: ImageFont.FreeTypeFont
     temp_image_filename: str
-    next_temp_image_filename: str
     loading_wallpaper: bool
 
     original_file_path: str
+    next_file_path: str
     temp_file_path: str
-    next_temp_file_path: str
     file_path_history: list
     cycle_timer: wx.Timer
     observer: Observer
@@ -83,6 +82,7 @@ class PyWallpaper(wx.Frame):
 
         # Initialize important object attributes
         self.original_file_path = ""
+        self.next_file_path = ""
         self.temp_file_path = ""
         self.loading_wallpaper = False
         self.file_path_history = []
@@ -91,7 +91,6 @@ class PyWallpaper(wx.Frame):
         self.running_ephemeral_image_refresh = False
 
         self.temp_image_filename = os.path.join(os.environ["TEMP"], "wallpaper")
-        self.next_temp_image_filename = os.path.join(os.environ["TEMP"], "next_wallpaper")
 
         self.perf = utils.PerformanceTimer()
         self.migrate_db()
@@ -473,14 +472,31 @@ class PyWallpaper(wx.Frame):
             if self.is_screensaver_running():
                 wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
                 return
-            self.original_file_path = self.pick_new_wallpaper()
-            self.temp_file_path = self.make_image(self.original_file_path, self.temp_image_filename, redo_colors)
+
+            # If a file was not preloaded, do that now
+            if not self.next_file_path:
+                logger.debug("No image preloaded, doing that now")
+                self.original_file_path = self.pick_new_wallpaper()
+                self.temp_file_path = self.make_image(self.original_file_path, redo_colors)
+            else:
+                self.original_file_path = self.next_file_path
+                self.next_file_path = ""
+
+            # If the file loaded properly, set the desktop wallpaper
             if self.temp_file_path:
                 self.set_desktop_wallpaper(self.temp_file_path)
                 self.add_to_history(self.original_file_path)
                 wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
             else:
                 wx.CallAfter(self.cycle_timer.StartOnce, self.error_delay)
+
+            # Preload the next file
+            logger.debug("Preloading next wallpaper")
+            self.next_file_path = self.pick_new_wallpaper()
+            self.temp_file_path = self.make_image(self.next_file_path, redo_colors)
+            if not self.temp_file_path:
+                # Capture preload failure and set it up to load a new file the next time the timer runs
+                self.next_file_path = ""
 
             wx.CallAfter(self.refresh_ephemeral_images)
         except Exception:
@@ -520,14 +536,14 @@ class PyWallpaper(wx.Frame):
         self.loading_wallpaper = True
         try:
             self.cycle_timer.Stop()
-            temp_file_path = self.make_image(file_path, self.temp_image_filename, redo_colors)
+            temp_file_path = self.make_image(file_path, redo_colors)
             if temp_file_path:
                 self.set_desktop_wallpaper(temp_file_path)
             wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
         finally:
             self.loading_wallpaper = False
 
-    def make_image(self, file_path: str, temp_file_name: str, redo_colors: bool = False) -> str:
+    def make_image(self, file_path: str, redo_colors: bool = False) -> str:
         try:
             t1 = time.perf_counter_ns()
 
@@ -551,7 +567,7 @@ class PyWallpaper(wx.Frame):
                 self.add_text_to_image(img, file_path)
             # Write to the temp file
             ext = os.path.splitext(file_path)[1]
-            temp_file_path = temp_file_name + ext
+            temp_file_path = self.temp_image_filename + ext
             img.save(temp_file_path)
 
             t2 = time.perf_counter_ns()
