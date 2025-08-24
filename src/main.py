@@ -740,7 +740,8 @@ class PyWallpaper(wx.Frame):
                 dialog.ShowModal()
             return
         self.cycle_timer.Stop()
-        self.original_file_path = self.file_path_history.pop()
+        self.file_path_history.pop()
+        self.original_file_path = self.file_path_history[-1]
         logger.debug(f"History: {self.file_path_history}")
         self.set_wallpaper(self.original_file_path)
 
