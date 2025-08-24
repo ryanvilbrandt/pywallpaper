@@ -474,13 +474,10 @@ class PyWallpaper(wx.Frame):
                 wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
                 return
             self.original_file_path = self.pick_new_wallpaper()
-            temp_file_path = self.make_image(self.original_file_path, self.temp_image_filename, redo_colors)
-            if temp_file_path:
-                self.set_desktop_wallpaper(temp_file_path)
-                self.file_path_history.append(self.original_file_path)
-                history_size = self.config.getint("Settings", "History size")
-                self.file_path_history = self.file_path_history[-1 * history_size:]
-                logger.debug(f"History: {self.file_path_history}")
+            self.temp_file_path = self.make_image(self.original_file_path, self.temp_image_filename, redo_colors)
+            if self.temp_file_path:
+                self.set_desktop_wallpaper(self.temp_file_path)
+                self.add_to_history(self.original_file_path)
                 wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
             else:
                 wx.CallAfter(self.cycle_timer.StartOnce, self.error_delay)
@@ -742,6 +739,12 @@ class PyWallpaper(wx.Frame):
             eventType=event_type,
             strings=[message],
         )
+
+    def add_to_history(self, file_path: str):
+        self.file_path_history.append(file_path)
+        history_size = self.config.getint("Settings", "History size")
+        self.file_path_history = self.file_path_history[-1 * history_size:]
+        logger.debug(f"History: {self.file_path_history}")
 
     def delete_missing_image(self, file_path: str):
         # Only delete the image if the setting is enabled
