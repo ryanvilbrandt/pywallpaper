@@ -46,8 +46,11 @@ class PyWallpaper(wx.Frame):
     ephemeral_refresh_delay: int
     font: ImageFont.FreeTypeFont
     temp_image_filename: str
+    next_temp_image_filename: str
 
     original_file_path: str
+    temp_file_path: str
+    next_temp_file_path: str
     file_path_history: list
     cycle_timer: wx.Timer
     observer: Observer
@@ -79,10 +82,14 @@ class PyWallpaper(wx.Frame):
 
         # Initialize important object attributes
         self.original_file_path = ""
+        self.temp_file_path = ""
         self.file_path_history = []
         self.event_handlers = {}
         self.last_ephemeral_image_refresh = 0
         self.running_ephemeral_image_refresh = False
+
+        self.temp_image_filename = os.path.join(os.environ["TEMP"], "wallpaper")
+        self.next_temp_image_filename = os.path.join(os.environ["TEMP"], "next_wallpaper")
 
         self.perf = utils.PerformanceTimer()
         self.migrate_db()
@@ -116,11 +123,6 @@ class PyWallpaper(wx.Frame):
         except OSError:
             logger.exception(f"Couldn't find font at '{font_name}'")
             self.font = ImageFont.load_default()
-
-        self.temp_image_filename = os.path.join(
-            os.environ["TEMP"],
-            c.get("Advanced", "Temp image filename")
-        )
 
         # Load settings file
         if os.path.isfile("conf/settings.json"):
@@ -455,42 +457,28 @@ class PyWallpaper(wx.Frame):
             return
         t = threading.Thread(
             name="image_loop",
-            target=self.pick_new_wallpaper,
+            target=self.pick_and_set_wallpaper,
             kwargs={"redo_colors": redo_colors},
             daemon=True,
         )
         t.start()
 
-    def pick_new_wallpaper(self, redo_colors: bool = False):
+    def pick_and_set_wallpaper(self, redo_colors: bool = False):
         try:
             if self.is_screensaver_running():
                 wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
                 return
-            test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback="").strip('"')
-            test_mode = bool(test_wallpaper)
-            if test_wallpaper:
-                self.set_wallpaper(test_wallpaper, redo_colors)
-                self.original_file_path = test_wallpaper
-                return
-            with Db(self.file_list) as db:
-                t1 = time.perf_counter_ns()
-                algorithm = self.config.get("Settings", "Random algorithm").lower()
-                if algorithm == "pure":
-                    self.original_file_path = db.get_random_image(increment=not test_mode)
-                elif algorithm == "weighted":
-                    self.original_file_path = db.get_random_image_with_weighting(increment=not test_mode)
-                elif algorithm == "least used":
-                    self.original_file_path = db.get_random_image_from_least_used(increment=not test_mode)
-                else:
-                    raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
-                t2 = time.perf_counter_ns()
-                logger.info(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
-            self.original_file_path = self.original_file_path.replace("/", "\\")
-            if self.set_wallpaper(self.original_file_path, redo_colors):
+            self.original_file_path = self.pick_new_wallpaper()
+            temp_file_path = self.make_image(self.original_file_path, self.temp_image_filename, redo_colors)
+            if temp_file_path:
+                self.set_desktop_wallpaper(temp_file_path)
                 self.file_path_history.append(self.original_file_path)
-                self.file_path_history = self.file_path_history[
-                                         -1 * self.config.getint("Settings", "History size"):]
+                history_size = self.config.getint("Settings", "History size")
+                self.file_path_history = self.file_path_history[-1 * history_size:]
                 logger.debug(f"History: {self.file_path_history}")
+                wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
+            else:
+                wx.CallAfter(self.cycle_timer.StartOnce, self.error_delay)
 
             wx.CallAfter(self.refresh_ephemeral_images)
         except Exception:
@@ -500,56 +488,70 @@ class PyWallpaper(wx.Frame):
     def is_screensaver_running(self) -> bool:
         return False
 
-    def set_wallpaper(self, file_path: str, redo_colors: bool = False) -> bool:
-        logger.info(f"Loading {file_path}")
-        delay = self.error_delay
-        success = False
+    def pick_new_wallpaper(self) -> str:
+        test_wallpaper = self.config.get("Advanced", "Load test wallpaper", fallback="").strip('"')
+        test_mode = bool(test_wallpaper)
+        if test_wallpaper:
+            return test_wallpaper
+        with Db(self.file_list) as db:
+            t1 = time.perf_counter_ns()
+            algorithm = self.config.get("Settings", "Random algorithm").lower()
+            if algorithm == "pure":
+                file_path = db.get_random_image(increment=not test_mode)
+            elif algorithm == "weighted":
+                file_path = db.get_random_image_with_weighting(increment=not test_mode)
+            elif algorithm == "least used":
+                file_path = db.get_random_image_from_least_used(increment=not test_mode)
+            else:
+                raise ValueError(f'Invalid value in "Random algorithm" config option: {algorithm}')
+            t2 = time.perf_counter_ns()
+            logger.info(f"Time to get random image: {(t2 - t1) / 1_000_000:.2f} ms")
+        return file_path.replace("/", "\\")
+
+    def set_wallpaper(self, file_path: str, redo_colors: bool = False):
+        """For setting wallpapers outside the normal image progression"""
+        self.cycle_timer.Stop()
+        temp_file_path = self.make_image(file_path, self.temp_image_filename, redo_colors)
+        self.set_desktop_wallpaper(temp_file_path)
+        wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
+
+    def make_image(self, file_path: str, temp_file_name: str, redo_colors: bool = False) -> str:
         try:
             t1 = time.perf_counter_ns()
-            file_path = self.make_image(file_path, redo_colors)
+
+            # Open image
+            img = Image.open(file_path)
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            # Reorient the image if needed
+            img = self.reorient_picture(img)
+            # Resize and apply to background
+            img = self.resize_image_to_bg(
+                img,
+                self.str_to_color(self.config.get("Settings", "Background color")),
+                self.str_to_color(self.config.get("Settings", "Border color")),
+                self.str_to_color(self.config.get("Settings", "Padding color")),
+                file_path,
+                redo_colors,
+            )
+            # Add text
+            if self.add_filepath_checkbox.IsChecked():
+                self.add_text_to_image(img, file_path)
+            # Write to the temp file
+            ext = os.path.splitext(file_path)[1]
+            temp_file_path = temp_file_name + ext
+            img.save(temp_file_path)
+
             t2 = time.perf_counter_ns()
             logger.info(f"Time to load new image: {(t2 - t1) / 1_000_000:.2f} ms")
+
+            return temp_file_path
         except (FileNotFoundError, UnidentifiedImageError):
             logger.exception(f"Couldn't open image path {file_path!r}")
             self.delete_missing_image(file_path)
         except OSError as e:
             logger.exception(f"Failed to process image file: {file_path}")
             wx.MessageDialog(self, str(e), "Error").ShowModal()
-        else:
-            t1a = time.perf_counter_ns()
-            self.set_desktop_wallpaper(file_path)
-            t2a = time.perf_counter_ns()
-            logger.info(f"Time to apply image to desktop: {(t2a - t1a) / 1_000_000:.2f} ms")
-            delay = self.delay
-            success = True
-
-        wx.CallAfter(self.cycle_timer.StartOnce, delay)
-        return success
-
-    def make_image(self, file_path: str, redo_colors: bool = False) -> str:
-        # Open image
-        img = Image.open(file_path)
-        if img.mode == "P":
-            img = img.convert("RGBA")
-        # Reorient the image if needed
-        img = self.reorient_picture(img)
-        # Resize and apply to background
-        img = self.resize_image_to_bg(
-            img,
-            self.str_to_color(self.config.get("Settings", "Background color")),
-            self.str_to_color(self.config.get("Settings", "Border color")),
-            self.str_to_color(self.config.get("Settings", "Padding color")),
-            file_path,
-            redo_colors,
-        )
-        # Add text
-        if self.add_filepath_checkbox.IsChecked():
-            self.add_text_to_image(img, file_path)
-        # Write to temp file
-        ext = os.path.splitext(file_path)[1]
-        temp_file_path = self.temp_image_filename + ext
-        img.save(temp_file_path)
-        return temp_file_path
 
     @staticmethod
     def reorient_picture(img: Image) -> Image:
@@ -697,6 +699,9 @@ class PyWallpaper(wx.Frame):
         )
 
     def set_desktop_wallpaper(self, path: str) -> bool:
+        logger.info(f"Loading {path}")
+        t1 = time.perf_counter_ns()
+
         path = os.path.abspath(path)
         # Windows doesn't return an error if we set the wallpaper to an invalid path, so do a check here first.
         if not os.path.isfile(path):
@@ -708,6 +713,9 @@ class PyWallpaper(wx.Frame):
             return False
         self.create_windows_event_log("Setting wallpaper to {}".format(path))
         ctypes.windll.user32.SystemParametersInfoW(SPI_SET_DESKTOP_WALLPAPER, 0, path, 0)
+
+        t2 = time.perf_counter_ns()
+        logger.info(f"Time to apply image to desktop: {(t2 - t1) / 1_000_000:.2f} ms")
         return True
 
     @staticmethod
@@ -739,7 +747,6 @@ class PyWallpaper(wx.Frame):
             with wx.MessageDialog(self, msg, "Empty history list") as dialog:
                 dialog.ShowModal()
             return
-        self.cycle_timer.Stop()
         self.file_path_history.pop()
         self.original_file_path = self.file_path_history[-1]
         logger.debug(f"History: {self.file_path_history}")
@@ -839,7 +846,7 @@ class PyWallpaper(wx.Frame):
         self.save_setting(f"padding_preset_{idx}", d)
         if self.use_padding_test_checkbox.GetValue():
             img = self.resize_image_to_bg(None, "red", "", "white")
-            # Write to temp file
+            # Write to the temp file
             temp_file_path = self.temp_image_filename + ".png"
             img.save(temp_file_path)
             self.set_desktop_wallpaper(temp_file_path)
