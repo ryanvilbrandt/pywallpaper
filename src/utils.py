@@ -93,12 +93,12 @@ def refresh_ephemeral_images(db: Db, folder_name: str = None):
     file_paths_to_add = new_file_paths.difference(existing_file_paths)
     if file_paths_to_add:
         db.add_images(file_paths_to_add, ephemeral=True)
-    if existing_file_paths:
+    if new_file_paths:
         file_paths_to_hide = existing_file_paths.difference(new_file_paths)
         if file_paths_to_hide:
             db.hide_images(file_paths_to_hide)
     else:
-        logger.warning("Existing file paths is empty. Possibly due to issue connecting to storage. Not hiding any images.")
+        logger.warning("New file paths is empty. Possibly due to issue connecting to storage. Not hiding any images.")
 
 
 def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence[str]:
@@ -118,6 +118,7 @@ def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence
             if ext in allowed_extensions:
                 file_paths.append(os.path.join(dir_path, filename).replace("\\", "/"))
     return file_paths
+
 
 def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str]) -> Sequence[str]:
     global processing_eagle
