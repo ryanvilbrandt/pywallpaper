@@ -47,6 +47,7 @@ class PyWallpaper(wx.Frame):
     font: ImageFont.FreeTypeFont
     temp_image_filename: str
     next_temp_image_filename: str
+    loading_wallpaper: bool
 
     original_file_path: str
     temp_file_path: str
@@ -83,6 +84,7 @@ class PyWallpaper(wx.Frame):
         # Initialize important object attributes
         self.original_file_path = ""
         self.temp_file_path = ""
+        self.loading_wallpaper = False
         self.file_path_history = []
         self.event_handlers = {}
         self.last_ephemeral_image_refresh = 0
@@ -411,7 +413,7 @@ class PyWallpaper(wx.Frame):
         self.keybind_listener.register_callback(
             "next_image",
             self.settings.get("next_image_keybind"),
-            lambda: wx.CallAfter(self.trigger_image_loop),
+            lambda: wx.CallAfter(self.pick_and_set_wallpaper),
         )
         self.keybind_listener.register_callback(
             "delete_image",
@@ -445,8 +447,6 @@ class PyWallpaper(wx.Frame):
 
     # Loop functions
     def trigger_image_loop(self, _event: Event = None, redo_colors: bool = False):
-        self.cycle_timer.Stop()
-
         with Db(self.file_list) as db:
             count = db.get_all_active_count()
         if not count:
@@ -464,7 +464,12 @@ class PyWallpaper(wx.Frame):
         t.start()
 
     def pick_and_set_wallpaper(self, redo_colors: bool = False):
+        if self.loading_wallpaper:
+            logger.debug("Wallpaper is loading. Skipping.")
+            return
+        self.loading_wallpaper = True
         try:
+            self.cycle_timer.Stop()
             if self.is_screensaver_running():
                 wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
                 return
@@ -484,6 +489,8 @@ class PyWallpaper(wx.Frame):
         except Exception:
             logger.exception("Exception when trying to pick new wallpaper")
             wx.CallAfter(self.cycle_timer.StartOnce, self.error_delay)
+        finally:
+            self.loading_wallpaper = False
 
     def is_screensaver_running(self) -> bool:
         return False
@@ -510,10 +517,18 @@ class PyWallpaper(wx.Frame):
 
     def set_wallpaper(self, file_path: str, redo_colors: bool = False):
         """For setting wallpapers outside the normal image progression"""
-        self.cycle_timer.Stop()
-        temp_file_path = self.make_image(file_path, self.temp_image_filename, redo_colors)
-        self.set_desktop_wallpaper(temp_file_path)
-        wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
+        if self.loading_wallpaper:
+            logger.debug("Wallpaper is loading. Skipping.")
+            return
+        self.loading_wallpaper = True
+        try:
+            self.cycle_timer.Stop()
+            temp_file_path = self.make_image(file_path, self.temp_image_filename, redo_colors)
+            if temp_file_path:
+                self.set_desktop_wallpaper(temp_file_path)
+            wx.CallAfter(self.cycle_timer.StartOnce, self.delay)
+        finally:
+            self.loading_wallpaper = False
 
     def make_image(self, file_path: str, temp_file_name: str, redo_colors: bool = False) -> str:
         try:
@@ -552,6 +567,7 @@ class PyWallpaper(wx.Frame):
         except OSError as e:
             logger.exception(f"Failed to process image file: {file_path}")
             wx.MessageDialog(self, str(e), "Error").ShowModal()
+        return ""
 
     @staticmethod
     def reorient_picture(img: Image) -> Image:
@@ -967,7 +983,7 @@ class PyWallpaper(wx.Frame):
         with wx.MessageDialog(self, msg, "Error", style=wx.OK | wx.ICON_ERROR) as dialog:
             dialog.ShowModal()
 
-    def on_exit(self, *args):
+    def on_exit(self, *_args):
         if self.icon:
             self.icon.stop()  # Remove the system tray icon
         if self.observer:
