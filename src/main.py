@@ -292,7 +292,8 @@ class PyWallpaper(wx.Frame):
             lambda e: self.save_setting("delete_missing_images", e.EventObject.Value)
         )
 
-        # SIZER
+
+        # SIZERS
         sizer = wx.BoxSizer(wx.VERTICAL)
         file_list_sizer = wx.BoxSizer(wx.HORIZONTAL)
         file_list_sizer.Add(wx.StaticText(p, label=f'Wallpaper list:'), wx.SizerFlags().Border(wx.TOP | wx.RIGHT, 3))
@@ -305,11 +306,9 @@ class PyWallpaper(wx.Frame):
         delay_sizer.Add(self.delay_dropdown)
         sizer.Add(delay_sizer, wx.SizerFlags().Border(wx.TOP, 10))
 
-        # --- Add File Viewer button above "Add filepath to images?" ---
         open_file_viewer_btn = wx.Button(p, label="Open File Viewer")
         open_file_viewer_btn.Bind(wx.EVT_BUTTON, self.open_file_viewer_window)
         sizer.Add(open_file_viewer_btn, wx.SizerFlags().Border(wx.TOP, 10))
-        # --- End addition ---
 
         sizer.Add(self.add_filepath_checkbox, wx.SizerFlags().Border(wx.TOP, 10))
 
@@ -686,7 +685,6 @@ class PyWallpaper(wx.Frame):
                 set_cache = False
                 if self.settings.get("use_common_color_cache", True) and not redo_cache:
                     with Db(self.file_list) as db:
-                        logger.info("Using cached common colors")
                         common_colors = db.get_common_color_cache(image_file_path)
                         set_cache = True
                 if common_colors is None:
@@ -701,6 +699,8 @@ class PyWallpaper(wx.Frame):
                             f"Invalid config value: {config_value} "
                             f"(I probably need to fix the get_color_by_mode function)"
                         )
+                else:
+                    logger.info("Using cached common colors")
                 if set_cache or redo_cache:
                     with Db(self.file_list) as db:
                         db.set_common_color_cache(image_file_path, common_colors)
@@ -1011,7 +1011,7 @@ class PyWallpaper(wx.Frame):
             self.keybind_listener.stop()
         wx.Exit()
 
-    def open_file_viewer_window(self, event):
+    def open_file_viewer_window(self, _event):
         frame = FileViewerFrame(self, "File Viewer")
         frame.Show()
 

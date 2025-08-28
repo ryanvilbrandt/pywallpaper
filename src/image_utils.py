@@ -110,6 +110,9 @@ def downscale_image(image: Image, max_dim: int) -> Image:
     """Resize the image so the largest dimension matches max_dim while keeping the aspect ratio."""
     width, height = image.size
     scale = max_dim / max(width, height)
+    if scale > 1:
+        # Don't increase image size if it's smaller than the max dimension, just return the original image
+        return image
     new_size = (int(width * scale), int(height * scale))
     return image.resize(new_size, Image.LANCZOS)
 

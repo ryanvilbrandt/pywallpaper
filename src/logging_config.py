@@ -16,6 +16,17 @@ def init_logger():
     # Expand out env vars and apply config
     expanded = os.path.expandvars(raw).replace("\\", "/")
     config = yaml.safe_load(expanded)
+
+    # Force all logging levels to DEBUG if debug mode is set
+    if os.getenv("PYWALLPAPER_DEBUG_MODE"):
+        config['root']['level'] = 'DEBUG'
+        if 'loggers' in config:
+            for logger_name in config['loggers']:
+                config['loggers'][logger_name]['level'] = 'DEBUG'
+        if 'handlers' in config:
+            for handler_name in config['handlers']:
+                config['handlers'][handler_name]['level'] = 'DEBUG'
+
     logging.config.dictConfig(config)
 
     # Find the file_handler so we can use it later
