@@ -122,26 +122,33 @@ def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> Sequence
 
 def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str]) -> Sequence[str]:
     global processing_eagle, _EAGLE_META_CACHE
-    print(f"Size of _EAGLE_META_CACHE: {len(_EAGLE_META_CACHE)}")
+    logger.debug(f"Size of _EAGLE_META_CACHE: {len(_EAGLE_META_CACHE)}")
     processing_eagle = True
     progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...",
                                      style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
     try:
         file_list = []
+        loading_times = set()
         folder_list = os.listdir(os.path.join(dir_path, "images"))
         total_folders = len(folder_list)
         progress_bar.SetRange(total_folders)
         progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
-        for i, folder_path in enumerate(folder_list, start=1):
+        for i, folder_name in enumerate(folder_list, start=1):
             # if i % 100 == 0:
             #     print(f"Scanning Eagle folders: {i}/{total_folders}")
+            folder_path = os.path.join(dir_path, "images", folder_name)
+            t1 = perf_counter_ns()
             file_path = parse_eagle_folder(folder_path, folder_ids, ignore_lock=True)
+            t2 = perf_counter_ns()
+            loading_times.add(t2 - t1)
             if file_path is not None:
                 file_list.append(file_path)
             pb_status = progress_bar.Update(i, newmsg=f"Scanning image folders... ({i}/{total_folders})")
             # If the user clicked Abort, return early
             if not pb_status[0]:
                 return []
+        avg_loading_time = sum(loading_times) / len(loading_times)
+        logger.debug(f"Average loading time: {avg_loading_time} ns")
         return file_list
     finally:
         progress_bar.Close()
@@ -204,7 +211,7 @@ def parse_eagle_folder(dir_path: str, folder_ids: list[str], ignore_lock: bool =
     # Skip if it's not a folder_id we care about
     try:
         if not set(folder_ids).intersection(metadata["folders"]):
-            _set_cached_eagle_entry(metadata_path, matched=True, image_relpath=None)
+            _set_cached_eagle_entry(metadata_path, matched=False, image_relpath=None)
             return None
     except TypeError:
         logger.exception("TypeError when intersecting folder sets")
@@ -213,12 +220,12 @@ def parse_eagle_folder(dir_path: str, folder_ids: list[str], ignore_lock: bool =
         raise
     logger.debug(f"Loading image from {dir_path}...")
     file_list = os.listdir(dir_path)
-    for file_path in file_list:
-        if file_path.endswith("metadata.json"):
+    for file_name in file_list:
+        if file_name.endswith("metadata.json"):
             continue
-        if len(file_list) > 2 and file_path.endswith("_thumbnail.png"):
+        if len(file_list) > 2 and file_name.endswith("_thumbnail.png"):
             continue
-        file_path = file_path.replace("\\", "/")
+        file_path = os.path.join(dir_path, file_name).replace("\\", "/")
         _set_cached_eagle_entry(metadata_path, matched=True, image_relpath=file_path)
         return file_path
     logger.error(f"No non-thumbnail image found in {dir_path}")

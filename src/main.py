@@ -244,6 +244,8 @@ class PyWallpaper(wx.Frame):
         self.enable_ephemeral_refresh_checkbox = wx.CheckBox(p, label="Enable periodic rescan of folders?")
         self.enable_ephemeral_refresh_checkbox.SetValue(self.settings.get("enable_ephemeral_refresh", True))
         self.enable_ephemeral_refresh_checkbox.Bind(wx.EVT_CHECKBOX, self.set_enable_ephemeral_refresh)
+        force_ephemeral_refresh_button = wx.Button(p, label="Rescan folders now")
+        force_ephemeral_refresh_button.Bind(wx.EVT_BUTTON, lambda _event: self.refresh_ephemeral_images(force_refresh=True))
 
         previous_image_keybind = wx.StaticText(p, label=self.settings.get("previous_image_keybind", "<not set>"))
         previous_image_keybind_set_button = wx.Button(p, label="Set")
@@ -346,6 +348,7 @@ class PyWallpaper(wx.Frame):
         ephemeral_refresh_sizer.Add(self.ephemeral_refresh_dropdown)
         sizer.Add(ephemeral_refresh_sizer, wx.SizerFlags().Border(wx.TOP, 10))
         sizer.Add(self.enable_ephemeral_refresh_checkbox, wx.SizerFlags().Border(wx.TOP, 5))
+        sizer.Add(force_ephemeral_refresh_button, wx.SizerFlags().Border(wx.TOP, 5))
 
         keybind_box = wx.StaticBox(p, label="Universal Keybinds (usable everywhere)")
         keybind_sizer = wx.StaticBoxSizer(keybind_box, wx.VERTICAL)
@@ -449,7 +452,7 @@ class PyWallpaper(wx.Frame):
             count = db.get_all_active_count()
         if not count:
             self.Show()
-            msg = 'No images have been loaded. Click the "Add Files to Wallpaper List" button to get started.'
+            msg = 'No images have been loaded. Click "Open File Viewer" to add files or folders to the list.'
             with wx.MessageDialog(self, msg, "Empty wallpaper list") as dialog:
                 dialog.ShowModal()
             return
