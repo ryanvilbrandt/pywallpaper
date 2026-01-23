@@ -7,7 +7,7 @@ import string
 from collections import OrderedDict, defaultdict
 from random import choice, choices
 from sqlite3 import Cursor, OperationalError
-from typing import Optional, Iterator, Union, Sequence, Any
+from typing import Optional, Iterator, Union, Any
 
 logger = logging.getLogger(__name__)
 
@@ -443,7 +443,7 @@ class Db:
         dir_path = dir_path.replace("\\", "/")
         return self._fetch_one(sql, [dir_path])
 
-    def add_images(self, filepaths: Sequence[str], ephemeral: bool = False):
+    def add_images(self, filepaths: Union[set[str] | list[str]], ephemeral: bool = False):
         sql = f"""
         INSERT INTO {self.table_id}(filepath, ephemeral)
         VALUES (?, ?)
@@ -488,7 +488,7 @@ class Db:
         self.cur.execute(sql, [json.dumps(d), eagle_library_path])
         return d
 
-    def hide_images(self, filepaths: Sequence[str]):
+    def hide_images(self, filepaths: Union[set[str] | list[str]]):
         sql = f"""
         UPDATE {self.table_id}
         SET hidden=TRUE
@@ -539,7 +539,7 @@ class Db:
         sql = f"""
         DELETE FROM {self.table_id} WHERE filepath=?;
         """
-        ret = self._execute(sql, [filepath])
+        ret = self._execute(sql, [filepath.replace("\\", "/")])
         if ret.rowcount == 0:
             logger.error(f"Failed to delete image from database: {filepath}")
 

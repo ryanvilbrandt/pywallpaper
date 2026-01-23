@@ -22,6 +22,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from wx import Event
 
+import eagle
 from logging_config import init_logger
 
 init_logger()
@@ -1052,7 +1053,7 @@ class MyEventHandler(FileSystemEventHandler):
         if self.eagle_mode:
             logger.debug(f"Adding '{file_path}' in Eagle mode. eagle_folder_ids={self.eagle_folder_ids}")
             base_dir = os.path.dirname(file_path)
-            file_path = utils.parse_eagle_folder(base_dir, self.eagle_folder_ids)
+            file_path = eagle.parse_eagle_folder(base_dir, self.eagle_folder_ids)
             if file_path is None:
                 return
         with Db(file_list=self.parent.file_list) as db:

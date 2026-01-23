@@ -6,6 +6,7 @@ from typing import Iterator
 import wx
 import wx.grid as gridlib
 
+import eagle
 import utils
 from db import Db
 from utils import refresh_ephemeral_images
@@ -262,7 +263,7 @@ class FileViewerFrame(wx.Frame):
             folder_data = db.add_eagle_folder(dir_path, folder_data)
             db.remove_ephemeral_images_in_folder(dir_path)
         folder_ids = list(folder_data.values())
-        file_paths = utils.get_file_list_in_eagle_folder(dir_path, folder_ids)
+        file_paths = eagle.get_file_list_in_eagle_folder(dir_path, folder_ids)
         if file_paths:
             with Db(self.parent.file_list) as db:
                 db.add_images(file_paths, ephemeral=True)
