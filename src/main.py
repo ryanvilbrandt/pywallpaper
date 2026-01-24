@@ -922,7 +922,7 @@ class PyWallpaper(wx.Frame):
         del self.settings[keybind_name + "_image_keybind"]
         self.save_settings()
 
-    def refresh_ephemeral_images(self, force_refresh=False):
+    def refresh_ephemeral_images(self, force_refresh: bool = False):
         # Do not run more than one refresh at once
         if self.running_ephemeral_image_refresh:
             return

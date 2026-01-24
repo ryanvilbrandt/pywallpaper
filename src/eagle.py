@@ -12,20 +12,24 @@ logger = logging.getLogger(__name__)
 processing_eagle = False
 
 
-def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str]) -> Union[set[str] | list[str]]:
+def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str], show_progress_dialog: bool = False) -> Union[set[str] | list[str]]:
     global processing_eagle, _EAGLE_META_CACHE
     _load_eagle_meta_cache()
     logger.debug(f"Size of _EAGLE_META_CACHE: {len(_EAGLE_META_CACHE)}")
     processing_eagle = True
-    progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...",
-                                     style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
+    if show_progress_dialog:
+        progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...",
+                                         style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
+    else:
+        progress_bar = None
     try:
         file_list = []
         loading_times = set()
         folder_list = os.listdir(os.path.join(dir_path, "images"))
         total_folders = len(folder_list)
-        progress_bar.SetRange(total_folders)
-        progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
+        if show_progress_dialog:
+            progress_bar.SetRange(total_folders)
+            progress_bar.Update(0, f"Scanning image folders... (0/{total_folders})")
         for i, folder_name in enumerate(folder_list, start=1):
             # if i % 100 == 0:
             #     print(f"Scanning Eagle folders: {i}/{total_folders}")
@@ -36,15 +40,17 @@ def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str]) -> Union
             loading_times.add(t2 - t1)
             if file_path is not None:
                 file_list.append(file_path)
-            pb_status = progress_bar.Update(i, newmsg=f"Scanning image folders... ({i}/{total_folders})")
-            # If the user clicked Abort, return early
-            if not pb_status[0]:
-                return []
+            if show_progress_dialog:
+                pb_status = progress_bar.Update(i, newmsg=f"Scanning image folders... ({i}/{total_folders})")
+                # If the user clicked Abort, return early
+                if not pb_status[0]:
+                    return []
         avg_loading_time = sum(loading_times) / len(loading_times)
         logger.debug(f"Average loading time: {avg_loading_time} ns")
         return file_list
     finally:
-        progress_bar.Close()
+        if show_progress_dialog:
+            progress_bar.Close()
         _save_eagle_meta_cache()
         processing_eagle = False
 

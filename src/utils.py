@@ -71,7 +71,7 @@ def error_dialog(parent: wx.Frame, message: str, title: str = None):
         dialog.ShowModal()
 
 
-def refresh_ephemeral_images(db: Db, folder_name: str = None):
+def refresh_ephemeral_images(db: Db, folder_name: str = None, force_refresh: bool = False):
     # TODO Add checking for more precise folder prefixes.
     #  Consider whether `include_subdirectories` is set, or if folders are inside other folders.
     if folder_name and not os.path.isdir(folder_name):
@@ -81,7 +81,9 @@ def refresh_ephemeral_images(db: Db, folder_name: str = None):
     for folder in folders:
         logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
         if folder["is_eagle_directory"]:
-            new_file_paths += get_file_list_in_eagle_folder(folder["filepath"], folder["eagle_folder_data"])
+            new_file_paths += get_file_list_in_eagle_folder(
+                folder["filepath"], folder["eagle_folder_data"], show_progress_dialog=force_refresh,
+            )
         else:
             new_file_paths += get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
     new_file_paths = set(new_file_paths)
