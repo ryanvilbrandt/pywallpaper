@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 from typing import Iterator
 
 import wx
@@ -505,13 +506,23 @@ class FileViewerFrame(wx.Frame):
     def on_grid_cell_dclick(self, event):
         row = event.GetRow()
         col = event.GetCol()
-        if col == 1 and row < self.grid.GetNumberRows():
+        if col == 0 and row < self.grid.GetNumberRows():
+            # Filepath
+            filepath = self.grid.GetCellValue(row, 0)
+            if filepath:
+                is_directory = self.grid.GetCellValue(row, 2) == "Yes"
+                if is_directory:
+                    subprocess.Popen(["explorer", os.path.abspath(filepath)])
+                else:
+                    subprocess.run(["cmd", "/c", "start", "", os.path.abspath(filepath)])
+        elif col == 1 and row < self.grid.GetNumberRows():
             # Active
             filepath = self.grid.GetCellValue(row, 0)
-            active = self.grid.GetCellValue(row, 1) == "Yes"
-            is_directory = self.grid.GetCellValue(row, 2) == "Yes"
-            self.update_active_status(filepath, not active, is_directory)
-            self.populate_grid()
+            if filepath:
+                active = self.grid.GetCellValue(row, 1) == "Yes"
+                is_directory = self.grid.GetCellValue(row, 2) == "Yes"
+                self.update_active_status(filepath, not active, is_directory)
+                self.populate_grid()
         elif col == 3 and row < self.grid.GetNumberRows():
             # Include Subdirectories
             is_directory = self.grid.GetCellValue(row, 2) == "Yes"
@@ -546,7 +557,12 @@ class FileViewerFrame(wx.Frame):
         label_window = self.grid.GetGridColLabelWindow()
         x, y = event.GetPosition()
         col = self.grid.XToCol(x)
-        if col == 1:  # Active
+        if col == 0:  # Active
+            msg = ("Double-clicking a cell in this column will open that image in your\n"
+                   "default image viewer if it's an image. Otherwise, it will open the\n"
+                   "folder in Explorer.")
+            cursor = wx.Cursor(wx.CURSOR_QUESTION_ARROW)
+        elif col == 1:  # Active
             msg = ("Double-clicking a cell in this column will toggle whether that file\n"
                    "is included in the list of files to pick from. If you disable a folder,\n"
                    "all ephemeral images in that folder will be disabled.")
