@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -77,27 +78,28 @@ def refresh_ephemeral_images(db: Db, folder_name: str = None, force_refresh: boo
     if folder_name and not os.path.isdir(folder_name):
         logger.warning("Couldn't access folder, skipping refreshing ephemeral images")
     folders = list(db.get_active_folders(folder_name))
-    new_file_paths = []
+    found_file_paths = []
     for folder in folders:
         logger.info(f"Refreshing ephemeral images for {folder['filepath']}")
         if folder["is_eagle_directory"]:
-            new_file_paths += get_file_list_in_eagle_folder(
-                folder["filepath"], folder["eagle_folder_data"], show_progress_dialog=force_refresh,
+            folder_ids = json.loads(folder["eagle_folder_data"]).values()
+            found_file_paths += get_file_list_in_eagle_folder(
+                folder["filepath"], folder_ids, force_update_cache=force_refresh,
             )
         else:
-            new_file_paths += get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
-    new_file_paths = set(new_file_paths)
+            found_file_paths += get_file_list_in_folder(folder["filepath"], folder["include_subdirectories"])
+    found_file_paths = set(found_file_paths)
     ephemeral_images = db.get_all_ephemeral_images(folder_name)
     existing_file_paths = set([f["filepath"] for f in ephemeral_images])
-    file_paths_to_add = new_file_paths.difference(existing_file_paths)
+    file_paths_to_add = found_file_paths.difference(existing_file_paths)
     if file_paths_to_add:
         db.add_images(file_paths_to_add, ephemeral=True)
-    if new_file_paths:
-        file_paths_to_hide = existing_file_paths.difference(new_file_paths)
+    if found_file_paths:
+        file_paths_to_hide = existing_file_paths.difference(found_file_paths)
         if file_paths_to_hide:
             db.hide_images(file_paths_to_hide)
     else:
-        logger.warning("New file paths is empty. Possibly due to issue connecting to storage. Not hiding any images.")
+        logger.warning("Found file paths is empty. Possibly due to issue connecting to storage. Not hiding any images.")
 
 
 def get_file_list_in_folder(dir_path: str, include_subfolders: bool) -> list[str]:

@@ -12,11 +12,17 @@ logger = logging.getLogger(__name__)
 processing_eagle = False
 
 
-def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str], show_progress_dialog: bool = False) -> Union[set[str] | list[str]]:
+def get_file_list_in_eagle_folder(
+        dir_path: str, folder_ids: list[str], force_update_cache: bool = False
+) -> Union[set[str] | list[str]]:
     global processing_eagle, _EAGLE_META_CACHE
     _load_eagle_meta_cache()
     logger.debug(f"Size of _EAGLE_META_CACHE: {len(_EAGLE_META_CACHE)}")
+
     processing_eagle = True
+    # Saving `show_progress_dialog` for likely reuse later
+    show_progress_dialog = force_update_cache
+
     if show_progress_dialog:
         progress_bar = wx.ProgressDialog("Loading Eagle library", "Scanning image folders...",
                                          style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_ELAPSED_TIME | wx.PD_CAN_ABORT)
@@ -35,7 +41,9 @@ def get_file_list_in_eagle_folder(dir_path: str, folder_ids: list[str], show_pro
             #     print(f"Scanning Eagle folders: {i}/{total_folders}")
             folder_path = os.path.join(dir_path, "images", folder_name)
             t1 = perf_counter_ns()
-            file_path = parse_eagle_folder(folder_path, folder_ids, ignore_lock=True, handle_cache=False)
+            file_path = parse_eagle_folder(
+                folder_path, folder_ids, ignore_lock=True, force_update_cache=force_update_cache
+            )
             t2 = perf_counter_ns()
             loading_times.add(t2 - t1)
             if file_path is not None:
@@ -128,18 +136,18 @@ def _set_cached_eagle_entry(metadata_path: str, matched: bool, image_relpath: Op
 
 
 def parse_eagle_folder(
-        dir_path: str, folder_ids: list[str], ignore_lock: bool = False, handle_cache: bool = True
+        dir_path: str, folder_ids: list[str], ignore_lock: bool = False, force_update_cache: bool = False
 ) -> Optional[str]:
     global processing_eagle
     if processing_eagle and not ignore_lock:
         return None
-    if handle_cache:
-        _load_eagle_meta_cache()
+    _load_eagle_meta_cache()
     # Check if the metadata.json file has changed since the last time we scanned
     metadata_path = os.path.join(dir_path, "metadata.json")
-    entry = _get_cached_eagle_entry(metadata_path)
-    if entry:
-        return entry.image_relpath
+    if not force_update_cache:
+        entry = _get_cached_eagle_entry(metadata_path)
+        if entry:
+            return entry.image_relpath
     # Load metadata.json first
     try:
         with open(metadata_path, "rb") as f:
@@ -155,8 +163,6 @@ def parse_eagle_folder(
     try:
         if not set(folder_ids).intersection(metadata["folders"]):
             _set_cached_eagle_entry(metadata_path, matched=False, image_relpath=None)
-            if handle_cache:
-                _save_eagle_meta_cache()
             return None
     except TypeError:
         logger.exception("TypeError when intersecting folder sets")
@@ -172,8 +178,6 @@ def parse_eagle_folder(
             continue
         file_path = os.path.join(dir_path, file_name).replace("\\", "/")
         _set_cached_eagle_entry(metadata_path, matched=True, image_relpath=file_path)
-        if handle_cache:
-            _save_eagle_meta_cache()
         return file_path
     logger.error(f"No non-thumbnail image found in {dir_path}")
     return None

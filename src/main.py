@@ -935,7 +935,7 @@ class PyWallpaper(wx.Frame):
         try:
             self.running_ephemeral_image_refresh = True
             with Db(self.file_list) as db:
-                utils.refresh_ephemeral_images(db)
+                utils.refresh_ephemeral_images(db, force_refresh=force_refresh)
         finally:
             self.running_ephemeral_image_refresh = False
             self.last_ephemeral_image_refresh = time.time()
@@ -1054,6 +1054,7 @@ class MyEventHandler(FileSystemEventHandler):
             logger.debug(f"Adding '{file_path}' in Eagle mode. eagle_folder_ids={self.eagle_folder_ids}")
             base_dir = os.path.dirname(file_path)
             file_path = eagle.parse_eagle_folder(base_dir, self.eagle_folder_ids)
+            eagle._save_eagle_meta_cache()
             if file_path is None:
                 return
         with Db(file_list=self.parent.file_list) as db:

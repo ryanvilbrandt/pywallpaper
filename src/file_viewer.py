@@ -264,7 +264,7 @@ class FileViewerFrame(wx.Frame):
             folder_data = db.add_eagle_folder(dir_path, folder_data)
             db.remove_ephemeral_images_in_folder(dir_path)
         folder_ids = list(folder_data.values())
-        file_paths = eagle.get_file_list_in_eagle_folder(dir_path, folder_ids, show_progress_dialog=True)
+        file_paths = eagle.get_file_list_in_eagle_folder(dir_path, folder_ids, force_update_cache=True)
         if file_paths:
             with Db(self.parent.file_list) as db:
                 db.add_images(file_paths, ephemeral=True)
