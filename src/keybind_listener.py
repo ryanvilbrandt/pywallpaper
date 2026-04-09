@@ -89,23 +89,20 @@ class KeybindListener:
             if keybind_name == "auto_capture":
                 # A special callback that triggers whenever a non-modifier key is pressed.
                 # Passes the final set of Keys to the callback
-                if key not in MODIFIERS:
-                    d["callback"](self.pressed_keys)
+                if normalized_key not in MODIFIERS:
+                    d["callback"](set(self.pressed_keys))
                     return
             if self.pressed_keys == d["keybinds"]:
                 logger.debug(self.format_keybind_combination(self.pressed_keys))
                 d["callback"]()
 
     def on_release(self, key: Union[Key, KeyCode]):
-        try:
-            self.pressed_keys.remove(self.normalize_key(key))
-        except KeyError as e:
-            logger.exception("Error when detecting on_release")
+        # Use discard to recover gracefully from occasional missed or duplicated events.
+        self.pressed_keys.discard(self.normalize_key(key))
 
     def normalize_key(self, key: Union[Key, KeyCode]) -> Union[Key, KeyCode]:
-        if isinstance(key, KeyCode):
-            return self.listener.canonical(key)
-        return key
+        # Canonicalize all keys so modifier aliases (e.g. ctrl_l/ctrl_r) are tracked consistently.
+        return self.listener.canonical(key)
 
     @staticmethod
     def parse_keybind_combination(keybind: str) -> set[Union[Key, KeyCode]]:
