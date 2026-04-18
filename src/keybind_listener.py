@@ -1,4 +1,6 @@
+import ctypes
 import logging
+import sys
 from typing import Union, TypedDict, Callable
 
 import wx
@@ -19,12 +21,40 @@ class CallbackDict(TypedDict):
 
 
 Callbacks = dict[str, CallbackDict]
-MODIFIERS = {
-    Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr,
-    Key.cmd, Key.cmd_l, Key.cmd_r,
-    Key.ctrl, Key.ctrl_l, Key.ctrl_r,
-    Key.shift, Key.shift_l, Key.shift_r,
-}
+
+if Key is not None:
+    MODIFIERS = {
+        Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr,
+        Key.cmd, Key.cmd_l, Key.cmd_r,
+        Key.ctrl, Key.ctrl_l, Key.ctrl_r,
+        Key.shift, Key.shift_l, Key.shift_r,
+    }
+    MODIFIER_CANONICAL_MAP = {
+        Key.alt: Key.alt,
+        Key.alt_l: Key.alt,
+        Key.alt_r: Key.alt,
+        Key.alt_gr: Key.alt,
+        Key.cmd: Key.cmd,
+        Key.cmd_l: Key.cmd,
+        Key.cmd_r: Key.cmd,
+        Key.ctrl: Key.ctrl,
+        Key.ctrl_l: Key.ctrl,
+        Key.ctrl_r: Key.ctrl,
+        Key.shift: Key.shift,
+        Key.shift_l: Key.shift,
+        Key.shift_r: Key.shift,
+    }
+    # Windows virtual key codes for polling current modifier state.
+    WINDOWS_MODIFIER_VKEYS = {
+        Key.alt: (0x12, 0xA4, 0xA5),
+        Key.cmd: (0x5B, 0x5C),
+        Key.ctrl: (0x11, 0xA2, 0xA3),
+        Key.shift: (0x10, 0xA0, 0xA1),
+    }
+else:
+    MODIFIERS = set()
+    MODIFIER_CANONICAL_MAP = {}
+    WINDOWS_MODIFIER_VKEYS = {}
 
 
 class KeybindListener:
@@ -37,6 +67,8 @@ class KeybindListener:
             raise ImportError("pynput not installed")
 
         self.name = name
+        self.pressed_non_mod_keys: set[Union[Key, KeyCode]] = set()
+        self.pressed_modifiers: set[Key] = set()
         self.pressed_keys: set[Union[Key, KeyCode]] = set()
         self.callbacks: Callbacks = {}
 
@@ -83,7 +115,11 @@ class KeybindListener:
 
     def on_press(self, key: Union[Key, KeyCode]):
         normalized_key = self.normalize_key(key)
-        self.pressed_keys.add(normalized_key)
+        if normalized_key in MODIFIERS:
+            self.pressed_modifiers.add(self.canonicalize_modifier(normalized_key))
+        else:
+            self.pressed_non_mod_keys.add(normalized_key)
+        self.pressed_keys = self.current_pressed_keys()
         # logger.debug(self.pressed_keys)
         for keybind_name, d in self.callbacks.items():
             if keybind_name == "auto_capture":
@@ -92,17 +128,73 @@ class KeybindListener:
                 if normalized_key not in MODIFIERS:
                     d["callback"](set(self.pressed_keys))
                     return
-            if self.pressed_keys == d["keybinds"]:
+            if d["keybinds"] and self.keybind_matches_press(d["keybinds"], normalized_key):
                 logger.debug(self.format_keybind_combination(self.pressed_keys))
                 d["callback"]()
 
     def on_release(self, key: Union[Key, KeyCode]):
-        # Use discard to recover gracefully from occasional missed or duplicated events.
-        self.pressed_keys.discard(self.normalize_key(key))
+        normalized_key = self.normalize_key(key)
+        if normalized_key in MODIFIERS:
+            self.pressed_modifiers.discard(self.canonicalize_modifier(normalized_key))
+        else:
+            # Use discard to recover gracefully from occasional missed or duplicated events.
+            self.pressed_non_mod_keys.discard(normalized_key)
+        self.pressed_keys = self.current_pressed_keys()
 
     def normalize_key(self, key: Union[Key, KeyCode]) -> Union[Key, KeyCode]:
         # Canonicalize all keys so modifier aliases (e.g. ctrl_l/ctrl_r) are tracked consistently.
         return self.listener.canonical(key)
+
+    def keybind_matches_press(self, keybind_set: set[Union[Key, KeyCode]], trigger_key: Union[Key, KeyCode]) -> bool:
+        """
+        Match on key press using live modifier state.
+        For the common case of one non-modifier key + modifiers, this avoids trusting historical
+        modifier press/release bookkeeping.
+        """
+        current_modifiers = {k for k in self.pressed_keys if k in MODIFIERS}
+        current_non_modifiers = {k for k in self.pressed_keys if k not in MODIFIERS}
+
+        required_modifiers = {
+            self.canonicalize_modifier(k) for k in keybind_set if k in MODIFIERS
+        }
+        required_non_modifiers = {k for k in keybind_set if k not in MODIFIERS}
+
+        if current_modifiers != required_modifiers:
+            return False
+
+        if len(required_non_modifiers) == 1:
+            return trigger_key == next(iter(required_non_modifiers))
+        return current_non_modifiers == required_non_modifiers
+
+    @staticmethod
+    def canonicalize_modifier(key: Union[Key, KeyCode]) -> Union[Key, KeyCode]:
+        return MODIFIER_CANONICAL_MAP.get(key, key)
+
+    def current_pressed_keys(self) -> set[Union[Key, KeyCode]]:
+        keys = set(self.pressed_non_mod_keys)
+        keys.update(self.get_active_modifiers())
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                keys_str = self.format_keybind_combination(keys) if keys else "<none>"
+                logger.debug("current_pressed_keys=%s", keys_str)
+            except Exception:
+                logger.exception("Failed to format current pressed keys for debug logging")
+        return keys
+
+    def get_active_modifiers(self) -> set[Key]:
+        # On Windows, query modifier state directly from the OS at event time to avoid stale state.
+        if sys.platform.startswith("win"):
+            try:
+                active_modifiers: set[Key] = set()
+                for modifier, vk_codes in WINDOWS_MODIFIER_VKEYS.items():
+                    if any(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000 for vk in vk_codes):
+                        active_modifiers.add(modifier)
+                return active_modifiers
+            except Exception:
+                logger.exception("Error when polling OS modifier key state")
+
+        # Fallback for non-Windows platforms or polling failures.
+        return set(self.pressed_modifiers)
 
     @staticmethod
     def parse_keybind_combination(keybind: str) -> set[Union[Key, KeyCode]]:
@@ -113,7 +205,10 @@ class KeybindListener:
         keybind_combination = set()
         for part in key_parts:
             if hasattr(Key, part):
-                keybind_combination.add(getattr(Key, part))
+                key = getattr(Key, part)
+                if key in MODIFIERS:
+                    key = MODIFIER_CANONICAL_MAP[key]
+                keybind_combination.add(key)
             else:
                 keybind_combination.add(KeyCode.from_char(part))
         return keybind_combination
@@ -122,9 +217,16 @@ class KeybindListener:
         key_names = []
         for key in keybind_set:
             if isinstance(key, KeyCode):
-                key_names.append(key.char.title())
+                if key.char:
+                    key_names.append(key.char.title())
+                elif key.vk is not None:
+                    key_names.append(f"Vk{key.vk}")
+                else:
+                    key_names.append(str(key))
             elif isinstance(key, Key):
-                key_names.append(key.name.title())
+                key_names.append((key.name or str(key)).title())
+            else:
+                key_names.append(str(key))
         return "+".join(sorted(key_names, key=self.keybind_sort_key))
 
     @staticmethod
